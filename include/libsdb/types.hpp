@@ -15,10 +15,6 @@ namespace sdb {
         explicit virt_addr(std::uint64_t addr)
             : addr_(addr) {}
 
-        operator std::uint64_t() const {
-            return addr_;
-        }
-
         std::uint64_t addr() const {
             return addr_;
         }
