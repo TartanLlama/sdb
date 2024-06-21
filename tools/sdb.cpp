@@ -60,21 +60,6 @@ namespace {
         }
     }
 
-    void handle_command(
-        pid_t pid, std::string_view line) {
-        auto args = split(line, ' ');
-        auto command = args[0];
-
-        if (is_prefix(command, "continue")) {
-            resume(pid);
-            wait_on_signal(pid);
-        }
-        else {
-            std::cerr << "Unknown command\n";
-        }
-    }
-
-
     void print_stop_reason(
         const sdb::process& process, sdb::stop_reason reason) {
         std::cout << "Process " << process.pid() << ' ';
@@ -103,14 +88,12 @@ namespace {
 
         if (is_prefix(command, "continue")) {
             process->resume();
-            process->wait_on_signal();
+            auto reason = process->wait_on_signal();
+            print_stop_reason(*process, reason);
         }
         else {
             std::cerr << "Unknown command\n";
         }
-
-        auto reason = process->wait_on_signal();
-        print_stop_reason(*process, reason);
     }
 
     void main_loop(std::unique_ptr<sdb::process>& process) {
