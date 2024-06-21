@@ -23,7 +23,8 @@ namespace sdb {
     class process {
     public:
         ~process();
-        static std::unique_ptr<process> launch(std::filesystem::path path);
+        static std::unique_ptr<process> launch(
+            std::filesystem::path path, bool debug = true);
         static std::unique_ptr<process> attach(pid_t pid);
 
         void resume();
@@ -37,12 +38,17 @@ namespace sdb {
         pid_t pid() const { return pid_; }
 
     private:
-        process(pid_t pid, bool terminate_on_end)
-            : pid_(pid), terminate_on_end_(terminate_on_end) {}
+        process(pid_t pid, bool terminate_on_end, bool is_attached)
+            : pid_(pid),
+            terminate_on_end_(terminate_on_end),
+            is_attached_(is_attached)
+        {}
+
 
         pid_t pid_ = 0;
         bool terminate_on_end_ = true;
         process_state state_ = process_state::stopped;
+        bool is_attached_ = true;
     };
 }
 

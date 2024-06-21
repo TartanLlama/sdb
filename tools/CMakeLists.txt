@@ -6,3 +6,4 @@ install(
     TARGETS sdb
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+
