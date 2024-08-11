@@ -72,7 +72,7 @@ DEFINE_GPR_8H(ch, rcx), DEFINE_GPR_8H(bh, rbx),
 
 DEFINE_GPR_8L(al, rax), DEFINE_GPR_8L(dl, rdx),
 DEFINE_GPR_8L(cl, rcx), DEFINE_GPR_8L(bl, rbx),
-DEFINE_GPR_8L(sil, rsi), DEFINE_GPR_8L(dil, rsi),
+DEFINE_GPR_8L(sil, rsi), DEFINE_GPR_8L(dil, rdi),
 DEFINE_GPR_8L(bpl, rbp), DEFINE_GPR_8L(spl, rsp),
 DEFINE_GPR_8L(r8b, r8), DEFINE_GPR_8L(r9b, r9),
 DEFINE_GPR_8L(r10b, r10), DEFINE_GPR_8L(r11b, r11),
