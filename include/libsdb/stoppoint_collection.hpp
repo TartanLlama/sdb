@@ -22,8 +22,6 @@ namespace sdb {
         Stoppoint& get_by_address(virt_addr address);
         const Stoppoint& get_by_address(virt_addr address) const;
 
-        std::vector<Stoppoint*> get_in_region(virt_addr low, virt_addr high) const;
-
         void remove_by_id(typename Stoppoint::id_type id);
         void remove_by_address(virt_addr address);
 
