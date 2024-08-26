@@ -269,6 +269,7 @@ sdb::process::read_memory_without_traps(
 	auto sites = breakpoint_sites_.get_in_region(
 		address, address + amount);
 	for (auto site : sites) {
+		if (!site->is_enabled()) continue;
 		auto offset = site->address() - address.addr();
 		memory[offset.addr()] = site->saved_data_;
 	}
