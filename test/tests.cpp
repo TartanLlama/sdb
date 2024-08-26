@@ -35,10 +35,10 @@ namespace {
 
     virt_addr get_load_address(pid_t pid, std::int64_t offset) {
         std::ifstream maps("/proc/" + std::to_string(pid) + "/maps");
+        std::regex map_regex(R"((\w+)-\w+ ..(.). (\w+))");
 
         std::string data;
         while (std::getline(maps, data)) {
-            std::regex map_regex(R"((\w+)-\w+ ..(.). (\w+))");
             std::smatch groups;
             std::regex_search(data, groups, map_regex);
 
