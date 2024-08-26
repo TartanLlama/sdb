@@ -13,6 +13,7 @@
 #include <libsdb/process.hpp>
 #include <libsdb/error.hpp>
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 #include <charconv>
 
 namespace {
