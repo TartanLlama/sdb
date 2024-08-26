@@ -10,7 +10,7 @@ This repository contains the source code for the book [Building a Debugger](http
 - Chapter 6: [Testing Registers with x64 Assembly](https://github.com/TartanLlama/sdb/tree/chapter-6)
 - Chapter 7: [Software Breakpoints](https://github.com/TartanLlama/sdb/tree/chapter-7)
 - Chapter 8: [Memory and Disassembly](https://github.com/TartanLlama/sdb/tree/chapter-8)
-- Chapter 9: Hardware Breakpoints and Watchpoints
+- Chapter 9: [Hardware Breakpoints and Watchpoints](https://github.com/TartanLlama/sdb/tree/chapter-9)
 - Chapter 10: Signals and Syscalls
 - Chapter 11: Object Files
 - Chapter 12: Debug Information
@@ -24,4 +24,4 @@ This repository contains the source code for the book [Building a Debugger](http
 - Chapter 20: Variables and Types
 - Chapter 21: Expression Evaluation
 
-Chapters 9 and up are still undergoing technical review.
+Chapters 10 and up are still undergoing technical review.
