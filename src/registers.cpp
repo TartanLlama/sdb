@@ -24,10 +24,7 @@ namespace {
             }
         }
 
-        auto ret = to_byte128(t);
-        std::fill(as_bytes(ret) + sizeof(T),
-            as_bytes(ret) + info.size + 1, std::byte(0));
-        return ret;
+        return to_byte128(t);
     }
 }
 
