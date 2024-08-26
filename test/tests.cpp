@@ -108,15 +108,15 @@ TEST_CASE("Write register works", "[register]") {
     output = channel.read();
     REQUIRE(to_string_view(output) == "0xba5eba11");
 
-    regs.write_by_id(register_id::xmm0, 42.42);
+    regs.write_by_id(register_id::xmm0, 42.24);
 
     proc->resume();
     proc->wait_on_signal();
 
     output = channel.read();
-    REQUIRE(to_string_view(output) == "42.42");
+    REQUIRE(to_string_view(output) == "42.24");
 
-    regs.write_by_id(register_id::st0, 42.42l);
+    regs.write_by_id(register_id::st0, 42.24l);
     regs.write_by_id(register_id::fsw,
         std::uint16_t{ 0b0011100000000000 });
     regs.write_by_id(register_id::ftw,
@@ -126,7 +126,7 @@ TEST_CASE("Write register works", "[register]") {
     proc->wait_on_signal();
 
     output = channel.read();
-    REQUIRE(to_string_view(output) == "42.42");
+    REQUIRE(to_string_view(output) == "42.24");
 }
 
 TEST_CASE("Read register works", "[register]") {
