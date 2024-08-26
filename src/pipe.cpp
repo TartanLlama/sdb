@@ -24,13 +24,15 @@ int sdb::pipe::release_write() {
 }
 
 void sdb::pipe::close_read() {
-    if (fds_[read_fd]) {
+    if (fds_[read_fd] != -1) {
         close(fds_[read_fd]);
+		fds_[read_fd] = -1;
     }
 }
 void sdb::pipe::close_write() {
-    if (fds_[write_fd]) {
+    if (fds_[write_fd] != -1) {
         close(fds_[write_fd]);
+		fds_[write_fd] = -1;
     }
 }
 
