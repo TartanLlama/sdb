@@ -3,13 +3,13 @@
 This repository contains the source code for the book [Building a Debugger](https://nostarch.com/building-a-debugger).
 
 - Chapter 1: [Project Setup](https://github.com/TartanLlama/sdb/tree/chapter-1)
-- Chapter 2: Compilation and Computer Architecture
+- Chapter 2: Compilation and Computer Architecture (no code)
 - Chapter 3: [Attaching to a Process](https://github.com/TartanLlama/sdb/tree/chapter-3)
 - Chapter 4: [Pipes, procfs, and Automated Testing](https://github.com/TartanLlama/sdb/tree/chapter-4)
 - Chapter 5: [Registers](https://github.com/TartanLlama/sdb/tree/chapter-5)
 - Chapter 6: [Testing Registers with x64 Assembly](https://github.com/TartanLlama/sdb/tree/chapter-6)
 - Chapter 7: [Software Breakpoints](https://github.com/TartanLlama/sdb/tree/chapter-7)
-- Chapter 8: Memory and Disassembly
+- Chapter 8: [Memory and Disassembly](https://github.com/TartanLlama/sdb/tree/chapter-8)
 - Chapter 9: Hardware Breakpoints and Watchpoints
 - Chapter 10: Signals and Syscalls
 - Chapter 11: Object Files
@@ -23,3 +23,5 @@ This repository contains the source code for the book [Building a Debugger](http
 - Chapter 19: DWARF Expressions
 - Chapter 20: Variables and Types
 - Chapter 21: Expression Evaluation
+
+Chapters 9 and up are still undergoing technical review.
