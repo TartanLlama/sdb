@@ -100,7 +100,7 @@ namespace {
 		const sdb::process& process, sdb::stop_reason reason) {
 		if (reason.trap_reason == sdb::trap_type::software_break) {
 			auto& site = process.breakpoint_sites().get_by_address(process.get_pc());
-			return fmt::format("(breakpoint {})", site.id());
+			return fmt::format(" (breakpoint {})", site.id());
 		}
 
 		if (reason.trap_reason == sdb::trap_type::hardware_break) {
@@ -128,7 +128,7 @@ namespace {
 		}
 		if (reason.trap_reason == sdb::trap_type::syscall) {
 			const auto& info = *reason.syscall_info;
-			std::string message;
+			std::string message = " ";
 			if (info.entry) {
 				message += "(syscall entry)\n";
 				message += fmt::format("syscall: {}({:#x})",
