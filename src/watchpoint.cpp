@@ -1,6 +1,7 @@
 #include <libsdb/watchpoint.hpp>
 #include <libsdb/process.hpp>
 #include <libsdb/error.hpp>
+#include <utility>
 
 namespace {
     auto get_next_id() {
@@ -20,6 +21,7 @@ sdb::watchpoint::watchpoint(
     }
 
     id_ = get_next_id();
+    update_data();
 }
 
 void sdb::watchpoint::enable() {
@@ -34,4 +36,11 @@ void sdb::watchpoint::disable() {
 
     process_->clear_hardware_stoppoint(hardware_register_index_);
     is_enabled_ = false;
+}
+
+void sdb::watchpoint::update_data() {
+    std::uint64_t new_data = 0;
+    auto read = process_->read_memory(address_, size_);
+    memcpy(&new_data, read.data(), size_);
+    previous_data_ = std::exchange(data_, new_data);
 }

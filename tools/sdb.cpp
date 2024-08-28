@@ -16,8 +16,15 @@
 #include <fmt/ranges.h>
 #include <charconv>
 #include <libsdb/disassembler.hpp>
+#include <libsdb/syscalls.hpp>
 
 namespace {
+	sdb::process* g_sdb_process = nullptr;
+
+	void handle_sigint(int) {
+		kill(g_sdb_process->pid(), SIGSTOP);
+	}
+
 	std::unique_ptr<sdb::process> attach(int argc, const char** argv) {
 		// Passing PID
 		if (argc == 3 && argv[1] == std::string_view("-p")) {
@@ -89,6 +96,54 @@ namespace {
 		}
 	}
 
+	std::string get_sigtrap_info(
+		const sdb::process& process, sdb::stop_reason reason) {
+		if (reason.trap_reason == sdb::trap_type::software_break) {
+			auto& site = process.breakpoint_sites().get_by_address(process.get_pc());
+			return fmt::format("(breakpoint {})", site.id());
+		}
+
+		if (reason.trap_reason == sdb::trap_type::hardware_break) {
+			auto id = process.get_current_hardware_stoppoint();
+
+			if (id.index() == 0) {
+				return fmt::format(" (breakpoint {})", std::get<0>(id));
+			}
+
+			std::string message;
+			auto& point = process.watchpoints().get_by_id(std::get<1>(id));
+			message += fmt::format(" (watchpoint {})", point.id());
+
+			if (point.data() == point.previous_data()) {
+				message += fmt::format("\nValue: {:#x}", point.data());
+			}
+			else {
+				message += fmt::format("\nOld value: {:#x}\nNew value: {:#x}",
+					point.previous_data(), point.data());
+			}
+			return message;
+		}
+		if (reason.trap_reason == sdb::trap_type::single_step) {
+			return " (single step)";
+		}
+		if (reason.trap_reason == sdb::trap_type::syscall) {
+			const auto& info = *reason.syscall_info;
+			std::string message;
+			if (info.entry) {
+				message += "(syscall entry)\n";
+				message += fmt::format("syscall: {}({:#x})",
+					sdb::syscall_id_to_name(info.id),
+					fmt::join(info.args, ","));
+			}
+			else {
+				message += "(syscall exit)\n";
+				message += fmt::format("syscall returned: {:#x}", info.ret);
+			}
+			return message;
+		}
+
+		return "";
+	}
 
 	void print_stop_reason(
 		const sdb::process& process, sdb::stop_reason reason) {
@@ -105,6 +160,9 @@ namespace {
 		case sdb::process_state::stopped:
 			message = fmt::format("stopped with signal {} at {:#x}",
 				sigabbrev_np(reason.info), process.get_pc().addr());
+			if (reason.info == SIGTRAP) {
+				message += get_sigtrap_info(process, reason);
+			}
 			break;
 		}
 
@@ -122,6 +180,7 @@ namespace {
 		if (args.size() == 1) {
 			std::cerr << R"(Available commands:
     breakpoint  - Commands for operating on breakpoints
+    catchpoint  - Commands for operating on catchpoints
     continue    - Resume the process
     disassemble - Disassemble machine code to assembly
     memory      - Commands for operating on memory
@@ -169,6 +228,13 @@ namespace {
 			std::cerr << R"(Available options:
     -c <number of instructions>
     -a <start address>
+)";
+		}
+		else if (is_prefix(args[1], "catchpoint")) {
+			std::cerr << R"(Available commands:
+    syscall
+    syscall none
+    syscall <list of syscall IDs or names>
 )";
 		}
 		else {
@@ -531,7 +597,7 @@ namespace {
 			case sdb::stoppoint_mode::write: return "write";
 			case sdb::stoppoint_mode::read_write: return "read_write";
 			}
-		};
+			};
 
 		if (process.watchpoints().empty()) {
 			fmt::print("No watchpoints set\n");
@@ -615,6 +681,42 @@ namespace {
 		}
 	}
 
+	void handle_syscall_catchpoint_command(
+		sdb::process& process, const std::vector<std::string>& args) {
+		sdb::syscall_catch_policy policy =
+			sdb::syscall_catch_policy::catch_all();
+
+		if (args.size() == 3 and args[2] == "none") {
+			policy = sdb::syscall_catch_policy::catch_none();
+		}
+		else if (args.size() >= 3) {
+			auto syscalls = split(args[2], ',');
+			std::vector<int> to_catch;
+			std::transform(begin(syscalls), end(syscalls),
+				std::back_inserter(to_catch),
+				[](auto& syscall) {
+					return isdigit(syscall[0]) ?
+						to_integral<int>(syscall).value() :
+						sdb::syscall_name_to_id(syscall);
+				});
+			policy = sdb::syscall_catch_policy::catch_some(std::move(to_catch));
+		}
+
+		process.set_syscall_catch_policy(std::move(policy));
+	}
+
+	void handle_catchpoint_command(
+		sdb::process& process, const std::vector<std::string>& args) {
+		if (args.size() < 2) {
+			print_help({ "help", "catchpoint" });
+			return;
+		}
+
+		if (is_prefix(args[1], "syscall")) {
+			handle_syscall_catchpoint_command(process, args);
+		}
+	}
+
 	void handle_command(std::unique_ptr<sdb::process>& process,
 		std::string_view line) {
 		auto args = split(line, ' ');
@@ -643,6 +745,9 @@ namespace {
 		}
 		else if (is_prefix(command, "disassemble")) {
 			handle_disassemble_command(*process, args);
+		}
+		else if (is_prefix(command, "catchpoint")) {
+			handle_catchpoint_command(*process, args);
 		}
 		else if (is_prefix(command, "help")) {
 			print_help(args);
@@ -691,6 +796,8 @@ int main(int argc, const char** argv) {
 
 	try {
 		auto process = attach(argc, argv);
+		g_sdb_process = process.get();
+		signal(SIGINT, handle_sigint);
 		main_loop(process);
 	}
 	catch (const sdb::error& err) {
