@@ -11,8 +11,8 @@ This repository contains the source code for the book [Building a Debugger](http
 - Chapter 7: [Software Breakpoints](https://github.com/TartanLlama/sdb/tree/chapter-7)
 - Chapter 8: [Memory and Disassembly](https://github.com/TartanLlama/sdb/tree/chapter-8)
 - Chapter 9: [Hardware Breakpoints and Watchpoints](https://github.com/TartanLlama/sdb/tree/chapter-9)
-- Chapter 10: Signals and Syscalls
-- Chapter 11: Object Files
+- Chapter 10: [Signals and Syscalls](https://github.com/TartanLlama/sdb/tree/chapter-10)
+- Chapter 11: [Object Files](https://github.com/TartanLlama/sdb/tree/chapter-11)
 - Chapter 12: Debug Information
 - Chapter 13: Line Tables
 - Chapter 14: Source-Level Breakpoints and Stepping
@@ -24,4 +24,4 @@ This repository contains the source code for the book [Building a Debugger](http
 - Chapter 20: Variables and Types
 - Chapter 21: Expression Evaluation
 
-Chapters 10 and up are still undergoing technical review.
+Chapters 12 and up are still undergoing technical review.
