@@ -489,3 +489,95 @@ TEST_CASE("ELF parser works", "[elf]") {
     name = elf.get_string(sym.value()->st_name);
     REQUIRE(name == "_start");
 }
+
+#include <libsdb/dwarf.hpp>
+TEST_CASE("Correct DWARF language", "[dwarf]") {
+    auto path = "targets/hello_sdb";
+    sdb::elf elf(path);
+    auto& compile_units = elf.get_dwarf().compile_units();
+    REQUIRE(compile_units.size() == 1);
+
+    auto& cu = compile_units[0];
+    auto lang = cu->root()[DW_AT_language].as_int();
+    REQUIRE(lang == DW_LANG_C_plus_plus);
+}
+
+TEST_CASE("Iterate DWARF", "[dwarf]") {
+    auto path = "targets/hello_sdb";
+    sdb::elf elf(path);
+    auto& compile_units = elf.get_dwarf().compile_units();
+    REQUIRE(compile_units.size() == 1);
+
+    auto& cu = compile_units[0];
+    std::size_t count = 0;
+    for (auto& d : cu->root().children()) {
+        auto a = d.abbrev_entry();
+        REQUIRE(a->code != 0);
+        ++count;
+    }
+    REQUIRE(count > 0);
+}
+
+TEST_CASE("Find main", "[dwarf]") {
+    auto path = "targets/multi_cu";
+    sdb::elf elf(path);
+    sdb::dwarf dwarf(elf);
+
+    bool found = false;
+    for (auto& cu : dwarf.compile_units()) {
+        for (auto& die : cu->root().children()) {
+            if (die.abbrev_entry()->tag == DW_TAG_subprogram
+                and die.contains(DW_AT_name)) {
+                auto name = die[DW_AT_name].as_string();
+                if (name == "main") {
+                    found = true;
+                }
+            }
+        }
+    }
+
+    REQUIRE(found);
+}
+
+TEST_CASE("Range list", "[dwarf]") {
+    auto path = "targets/hello_sdb";
+    sdb::elf elf(path);
+    sdb::dwarf dwarf(elf);
+    auto& cu = dwarf.compile_units()[0];
+
+    std::vector<std::uint64_t> range_data{
+    0x12341234, 0x12341236,
+        ~0ULL, 0x32,
+        0x12341234, 0x12341236,
+        0x0, 0x0
+    };
+
+    auto bytes = reinterpret_cast<std::byte*>(range_data.data());
+    sdb::range_list list(cu.get(), { bytes, bytes + range_data.size() }, file_addr{});
+
+    auto it = list.begin();
+    auto e1 = *it;
+    REQUIRE(e1.low.addr() == 0x12341234);
+    REQUIRE(e1.high.addr() == 0x12341236);
+    REQUIRE(e1.contains(file_addr{ elf, 0x12341234 }));
+    REQUIRE(e1.contains(file_addr{ elf, 0x12341235 }));
+    REQUIRE(!e1.contains(file_addr{ elf, 0x12341236 }));
+
+    ++it;
+    auto e2 = *it;
+    REQUIRE(e2.low.addr() == 0x12341266);
+    REQUIRE(e2.high.addr() == 0x12341268);
+    REQUIRE(e2.contains(file_addr{ elf, 0x12341266 }));
+    REQUIRE(e2.contains(file_addr{ elf, 0x12341267 }));
+    REQUIRE(!e2.contains(file_addr{ elf, 0x12341268 }));
+
+    ++it;
+    REQUIRE(it == list.end());
+
+    REQUIRE(list.contains(file_addr{ elf, 0x12341234 }));
+    REQUIRE(list.contains(file_addr{ elf, 0x12341235 }));
+    REQUIRE(!list.contains(file_addr{ elf, 0x12341236 }));
+    REQUIRE(list.contains(file_addr{ elf, 0x12341266 }));
+    REQUIRE(list.contains(file_addr{ elf, 0x12341267 }));
+    REQUIRE(!list.contains(file_addr{ elf, 0x12341268 }));
+}
