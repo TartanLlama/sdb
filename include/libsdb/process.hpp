@@ -44,7 +44,7 @@ namespace sdb {
         void write_user_area(std::size_t offset, std::uint64_t data);
 
         void write_fprs(const user_fpregs_struct& fprs);
-        void write_gprs(const user_regs_struct& fprs);
+        void write_gprs(const user_regs_struct& gprs);
 
     private:
         process(pid_t pid, bool terminate_on_end, bool is_attached)
