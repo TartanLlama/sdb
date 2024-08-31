@@ -7,8 +7,8 @@
 namespace sdb {
     class error : public std::runtime_error{
     public:
-        static void send(const std::string & what) { throw error(what); }
-        static void send_errno(const std::string & prefix) {
+        [[noreturn]] static void send(const std::string & what) { throw error(what); }
+        [[noreturn]] static void send_errno(const std::string & prefix) {
             throw error(prefix + ": " + std::strerror(errno));
         }
 
