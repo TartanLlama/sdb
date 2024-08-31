@@ -1,11 +1,7 @@
 import sys
 from git import Repo
 
-<<<<<<< HEAD
-chapters = list(range(1,8))
-=======
-chapters = list(range(1,12))
->>>>>>> cec4b54 (Add readme, update branch list)
+chapters = list(range(1,13))
 chapters.remove(2)
 branches = ['chapter-'+str(i) for i in chapters]
 
