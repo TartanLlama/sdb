@@ -45,7 +45,7 @@ namespace {
             if (groups[2] == 'x') {
                 auto low_range = std::stol(groups[1], nullptr, 16);
                 auto file_offset = std::stol(groups[3], nullptr, 16);
-                return virt_addr{ offset - file_offset + low_range };
+                return virt_addr(offset - file_offset + low_range);
             }
         }
 		sdb::error::send("Could not find load address");
