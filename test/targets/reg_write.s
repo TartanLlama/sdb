@@ -35,7 +35,7 @@ main:
 
     # Print contents of mm0
     movq    %mm0, %rsi
-    lea     hex_format(%rip), %rdi
+    leaq     hex_format(%rip), %rdi
     movq    $0, %rax
     call    printf@plt
     movq    $0, %rdi
