@@ -315,6 +315,7 @@ namespace {
 		case sdb::stoppoint_mode::write: return 0b01;
 		case sdb::stoppoint_mode::read_write: return 0b11;
 		case sdb::stoppoint_mode::execute: return 0b00;
+		default: sdb::error::send("Invalid stoppoint mode");
 		}
 	}
 
