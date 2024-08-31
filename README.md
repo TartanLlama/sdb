@@ -13,7 +13,7 @@ This repository contains the source code for the book [Building a Debugger](http
 - Chapter 9: [Hardware Breakpoints and Watchpoints](https://github.com/TartanLlama/sdb/tree/chapter-9)
 - Chapter 10: [Signals and Syscalls](https://github.com/TartanLlama/sdb/tree/chapter-10)
 - Chapter 11: [Object Files](https://github.com/TartanLlama/sdb/tree/chapter-11)
-- Chapter 12: Debug Information
+- Chapter 12: [Debug Information](https://github.com/TartanLlama/sdb/tree/chapter-12)
 - Chapter 13: Line Tables
 - Chapter 14: Source-Level Breakpoints and Stepping
 - Chapter 15: Call Frame Information
