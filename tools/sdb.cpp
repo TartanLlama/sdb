@@ -18,6 +18,7 @@
 #include <libsdb/disassembler.hpp>
 #include <libsdb/syscalls.hpp>
 #include <libsdb/target.hpp>
+#include <csignal>
 
 namespace {
 	sdb::process* g_sdb_process = nullptr;
