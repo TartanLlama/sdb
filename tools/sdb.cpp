@@ -597,6 +597,7 @@ namespace {
 			case sdb::stoppoint_mode::execute: return "execute";
 			case sdb::stoppoint_mode::write: return "write";
 			case sdb::stoppoint_mode::read_write: return "read_write";
+			default: sdb::error::send("Invalid stoppoint mode");
 			}
 			};
 
