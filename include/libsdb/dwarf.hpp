@@ -10,6 +10,7 @@
 #include <string_view>
 #include <optional>
 #include <string>
+#include <filesystem>
 
 namespace sdb {
 	class compile_unit;
@@ -114,15 +115,120 @@ namespace sdb {
 	};
 
 	class dwarf;
+
+	class line_table {
+	public:
+		struct file {
+			std::filesystem::path path;
+			std::uint64_t modification_time;
+			std::uint64_t file_length;
+		};
+
+		line_table(sdb::span<const std::byte> data,
+			const compile_unit* cu,
+			bool default_is_stmt, std::int8_t line_base,
+			std::uint8_t line_range, std::uint8_t opcode_base,
+			std::vector<std::filesystem::path> include_directories,
+			std::vector<file> file_names)
+			: data_(data), cu_(cu)
+			, default_is_stmt_(default_is_stmt)
+			, line_base_(line_base)
+			, line_range_(line_range)
+			, opcode_base_(opcode_base)
+			, include_directories_(std::move(include_directories))
+			, file_names_(std::move(file_names))
+		{}
+
+		const compile_unit& cu() const { return *cu_; }
+		const std::vector<file>& file_names() const { return file_names_; }
+
+		line_table(const line_table&) = delete;
+		line_table& operator=(const line_table&) = delete;
+
+		struct entry;
+
+		class iterator;
+
+		iterator begin() const;
+		iterator end() const;
+
+		iterator get_entry_by_address(file_addr address) const;
+		std::vector<iterator> get_entries_by_line(
+			std::filesystem::path path, std::size_t line) const;
+
+	private:
+		sdb::span<const std::byte> data_;
+		const compile_unit* cu_;
+		bool default_is_stmt_;
+		std::int8_t line_base_;
+		std::uint8_t line_range_;
+		std::uint8_t opcode_base_;
+		std::vector<std::filesystem::path> include_directories_;
+		mutable std::vector<file> file_names_;
+	};
+
+	struct line_table::entry {
+		bool operator==(const entry& rhs) const {
+			return address == rhs.address and
+				file_index == rhs.file_index and
+				line == rhs.line and
+				column == rhs.column and
+				discriminator == rhs.discriminator;
+		}
+
+		file_addr address;
+		std::uint64_t file_index = 1;
+		std::uint64_t line = 1;
+		std::uint64_t column = 0;
+		bool is_stmt;
+		bool basic_block_start = false;
+		bool end_sequence = false;
+		bool prologue_end = false;
+		bool epilogue_begin = false;
+		std::uint64_t discriminator = 0;
+		file* file_entry = nullptr;
+	};
+
+	class line_table::iterator {
+	public:
+		using value_type = entry;
+		using pointer = const entry*;
+		using reference = const entry&;
+		using difference_type = std::ptrdiff_t;
+		using iterator_category = std::forward_iterator_tag;
+
+		iterator(const line_table* table_);
+
+		iterator() = default;
+		iterator(const iterator&) = default;
+		iterator& operator=(const iterator&) = default;
+
+		const line_table::entry& operator*() const { return current_; }
+		const line_table::entry* operator->() const { return &current_; }
+
+		bool operator==(const iterator& rhs) const { return pos_ == rhs.pos_; }
+		bool operator!=(const iterator& rhs) const { return pos_ != rhs.pos_; }
+
+		iterator& operator++();
+		iterator operator++(int);
+
+	private:
+		bool execute_instruction();
+
+		const line_table* table_;
+		line_table::entry current_;
+		line_table::entry registers_;
+		const std::byte* pos_;
+	};
+
+
+
 	class die;
 	class compile_unit {
 	public:
 		compile_unit(dwarf& parent,
 			span<const std::byte> data,
-			std::size_t abbrev_offset)
-			: parent_(&parent)
-			, data_(data)
-			, abbrev_offset_(abbrev_offset) {}
+			std::size_t abbrev);
 
 		const dwarf* dwarf_info() const { return parent_; }
 		span<const std::byte> data() const { return data_; }
@@ -131,12 +237,18 @@ namespace sdb {
 			abbrev_table() const;
 
 		die root() const;
+		const line_table& lines() const { return *line_table_; }
 	private:
 		dwarf* parent_;
 		span<const std::byte> data_;
 		std::size_t abbrev_offset_;
+		std::unique_ptr<line_table> line_table_;
 	};
 
+	struct source_location {
+		const line_table::file* file;
+		std::uint64_t line;
+	};
 	class die {
 	public:
 		explicit die(const std::byte* next) : next_(next) {}
@@ -162,6 +274,10 @@ namespace sdb {
 		bool contains_address(file_addr address) const;
 
 		std::optional<std::string_view> name() const;
+
+		source_location location() const;
+		const line_table::file& file() const;
+		std::uint64_t line() const;
 
 	private:
 		const std::byte* pos_ = nullptr;
@@ -228,6 +344,12 @@ namespace sdb {
 			file_addr address) const;
 
 		std::vector<die> find_functions(std::string name) const;
+
+		line_table::iterator line_entry_at_address(file_addr address) const {
+			auto cu = compile_unit_containing_address(address);
+			if (!cu) return {};
+			return cu->lines().get_entry_by_address(address);
+		}
 
 	private:
 		void index() const;

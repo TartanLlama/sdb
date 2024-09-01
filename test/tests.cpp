@@ -582,3 +582,28 @@ TEST_CASE("Range list", "[dwarf]") {
     REQUIRE(list.contains(file_addr{ elf, 0x12341267 }));
     REQUIRE(!list.contains(file_addr{ elf, 0x12341268 }));
 }
+
+TEST_CASE("Line table", "[dwarf]") {
+    auto path = "targets/hello_sdb";
+    sdb::elf elf(path);
+    sdb::dwarf dwarf(elf);
+
+    REQUIRE(dwarf.compile_units().size() == 1);
+
+    auto& cu = dwarf.compile_units()[0];
+    auto it = cu->lines().begin();
+
+    REQUIRE(it->line == 2);
+    REQUIRE(it->file_entry->path.filename() == "hello_sdb.cpp");
+
+    ++it;
+    REQUIRE(it->line == 3);
+
+    ++it;
+    REQUIRE(it->line == 4);
+
+    ++it;
+    REQUIRE(it->end_sequence);
+    ++it;
+    REQUIRE(it == cu->lines().end());
+}

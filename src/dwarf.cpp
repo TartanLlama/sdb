@@ -232,6 +232,88 @@ namespace {
 		auto next = cur.position();
 		return sdb::die(pos, &cu, &abbrev, std::move(attr_locs), next);
 	}
+
+	sdb::line_table::file parse_line_table_file(cursor& cur,
+		std::filesystem::path compilation_dir,
+		const std::vector<std::filesystem::path>& include_directories) {
+		auto file = cur.string();
+		auto dir_index = cur.uleb128();
+		auto modification_time = cur.uleb128();
+		auto file_length = cur.uleb128();
+
+		std::filesystem::path path = file;
+		if (file[0] != '/') {
+			if (dir_index == 0) {
+				path = compilation_dir / std::string(file);
+			}
+			else {
+				path = include_directories[dir_index - 1] / std::string(file);
+			}
+		}
+		return { path.string(), modification_time, file_length };
+	}
+
+	std::unique_ptr<sdb::line_table>
+		parse_line_table(const sdb::compile_unit& cu) {
+		auto section = cu.dwarf_info()->elf_file()->get_section_contents(".debug_line");
+		if (!cu.root().contains(DW_AT_stmt_list)) return nullptr;
+		auto offset = cu.root()[DW_AT_stmt_list].as_section_offset();
+		cursor cur({ section.begin() + offset, section.end() });
+
+		auto size = cur.u32();
+		auto end = cur.position() + size;
+
+		auto version = cur.u16();
+		if (version != 4) sdb::error::send("Only DWARF 4 is supported");
+
+		(void)cur.u32(); // Header length
+
+		auto minimum_instruction_length = cur.u8();
+		if (minimum_instruction_length != 1)
+			sdb::error::send("Invalid minimum instruction length");
+
+		auto maximum_operations_per_instruction = cur.u8();
+		if (maximum_operations_per_instruction != 1)
+			sdb::error::send("Invalid maximum operations per instruction");
+
+		auto default_is_stmt = cur.u8();
+		auto line_base = cur.s8();
+		auto line_range = cur.u8();
+		auto opcode_base = cur.u8();
+
+		std::array<std::uint8_t, 12> expected_opcode_lengths{
+			0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1
+		};
+		for (auto i = 0; i < opcode_base - 1; ++i) {
+			if (cur.u8() != expected_opcode_lengths[i]) {
+				sdb::error::send("Unexpected opcode length");
+			}
+		}
+
+		std::vector<std::filesystem::path> include_directories;
+		std::filesystem::path compilation_dir(cu.root()[DW_AT_comp_dir].as_string());
+		for (auto dir = cur.string(); !dir.empty(); dir = cur.string()) {
+			if (dir[0] == '/') {
+				include_directories.push_back(std::string(dir));
+			}
+			else {
+				include_directories.push_back(compilation_dir / std::string(dir));
+			}
+		}
+
+		std::vector<sdb::line_table::file> file_names;
+		while (*cur.position() != std::byte(0)) {
+			file_names.push_back(
+				parse_line_table_file(cur, compilation_dir, include_directories));
+		}
+		cur += 1;
+
+		sdb::span<const std::byte> data{ cur.position(), end };
+		return std::make_unique<sdb::line_table>(data, &cu,
+			default_is_stmt,
+			line_base, line_range, opcode_base,
+			std::move(include_directories), std::move(file_names));
+	}
 }
 
 const std::unordered_map<std::uint64_t, sdb::abbrev>&
@@ -609,4 +691,221 @@ void sdb::dwarf::index_die(const die& current) const {
 	for (auto child : current.children()) {
 		index_die(child);
 	}
+}
+
+sdb::compile_unit::compile_unit(
+	dwarf& parent,
+	span<const std::byte> data,
+	std::size_t abbrev_offset)
+	: parent_(&parent)
+	, data_(data)
+	, abbrev_offset_(abbrev_offset) {
+	line_table_ = parse_line_table(*this);
+}
+
+sdb::line_table::iterator::iterator(const sdb::line_table* table)
+	: table_(table), pos_(table->data_.begin()) {
+	registers_.is_stmt = table->default_is_stmt_;
+	++(*this);
+}
+
+sdb::line_table::iterator
+sdb::line_table::begin() const {
+	return iterator(this);
+}
+sdb::line_table::iterator
+sdb::line_table::end() const {
+	return {};
+}
+
+sdb::line_table::iterator&
+sdb::line_table::iterator::operator++() {
+	if (pos_ == table_->data_.end()) {
+		pos_ = nullptr;
+		return *this;
+	}
+
+	bool emitted = false;
+	do {
+		emitted = execute_instruction();
+	} while (!emitted);
+
+	current_.file_entry = &table_->file_names_[current_.file_index - 1];
+	return *this;
+}
+
+sdb::line_table::iterator
+sdb::line_table::iterator::operator++(int) {
+	auto tmp = *this;
+	++(*this);
+	return tmp;
+}
+
+bool sdb::line_table::iterator::execute_instruction() {
+	auto elf = table_->cu_->dwarf_info()->elf_file();
+	cursor cur({ pos_, table_->data_.end() });
+	auto opcode = cur.u8();
+	bool emitted = false;
+
+	if (opcode > 0 and opcode < table_->opcode_base_) {
+		switch (opcode) {
+		case DW_LNS_copy:
+			current_ = registers_;
+			registers_.basic_block_start = false;
+			registers_.prologue_end = false;
+			registers_.epilogue_begin = false;
+			registers_.discriminator = 0;
+			emitted = true;
+			break;
+		case DW_LNS_advance_pc:
+			registers_.address += cur.uleb128();
+			break;
+		case DW_LNS_advance_line:
+			registers_.line += cur.sleb128();
+			break;
+		case DW_LNS_set_file:
+			registers_.file_index = cur.uleb128();
+			break;
+		case DW_LNS_set_column:
+			registers_.column = cur.uleb128();
+			break;
+		case DW_LNS_negate_stmt:
+			registers_.is_stmt = !registers_.is_stmt;
+			break;
+		case DW_LNS_set_basic_block:
+			registers_.basic_block_start = true;
+			break;
+		case DW_LNS_const_add_pc:
+			registers_.address +=
+				(255 - table_->opcode_base_) / table_->line_range_;
+			break;
+		case DW_LNS_fixed_advance_pc:
+			registers_.address += cur.u16();
+			break;
+		case DW_LNS_set_prologue_end:
+			registers_.prologue_end = true;
+			break;
+		case DW_LNS_set_epilogue_begin:
+			registers_.epilogue_begin = true;
+			break;
+		case DW_LNS_set_isa:
+			break;
+		default:
+			error::send("Unexpected standard opcode");
+		}
+	}
+	else if (opcode == 0) {
+		auto length = cur.uleb128();
+		auto extended_opcode = cur.u8();
+
+		switch (extended_opcode) {
+		case DW_LNE_end_sequence:
+			registers_.end_sequence = true;
+			current_ = registers_;
+			registers_ = entry{};
+			registers_.is_stmt = table_->default_is_stmt_;
+			emitted = true;
+			break;
+		case DW_LNE_set_address:
+			registers_.address = file_addr(
+				*elf, cur.u64());
+			break;
+		case DW_LNE_define_file: {
+			auto compilation_dir =
+				table_->cu_->root()[DW_AT_comp_dir].as_string();
+			auto file = parse_line_table_file(
+				cur, std::string(compilation_dir), table_->include_directories_);
+			table_->file_names_.push_back(file);
+			break;
+		}
+		case DW_LNE_set_discriminator:
+			registers_.discriminator = cur.uleb128();
+			break;
+		default:
+			error::send("Unexpected extended opcode");
+		}
+	}
+	else {
+		auto adjusted_opcode = opcode - table_->opcode_base_;
+		registers_.address += adjusted_opcode / table_->line_range_;
+		registers_.line +=
+			table_->line_base_ + (adjusted_opcode % table_->line_range_);
+		current_ = registers_;
+		registers_.basic_block_start = false;
+		registers_.prologue_end = false;
+		registers_.epilogue_begin = false;
+		registers_.discriminator = 0;
+		emitted = true;
+	}
+
+	pos_ = cur.position();
+	return emitted;
+}
+
+sdb::line_table::iterator
+sdb::line_table::get_entry_by_address(file_addr address) const {
+	auto prev = begin();
+	if (prev == end()) return prev;
+
+	auto it = prev;
+	for (++it; it != end(); prev = it++) {
+		if (prev->address <= address and
+			it->address > address and
+			!prev->end_sequence) {
+			return prev;
+		}
+	}
+	return end();
+}
+
+namespace {
+	bool path_ends_in(const std::filesystem::path& lhs, const std::filesystem::path& rhs) {
+		auto lhs_size = std::distance(lhs.begin(), lhs.end());
+		auto rhs_size = std::distance(rhs.begin(), rhs.end());
+		if (rhs_size > lhs_size) return false;
+		auto start = std::next(lhs.begin(), lhs_size - rhs_size);
+		return std::equal(start, lhs.end(), rhs.begin());
+	}
+}
+
+std::vector<sdb::line_table::iterator>
+sdb::line_table::get_entries_by_line(
+	std::filesystem::path path, std::size_t line) const {
+	std::vector<iterator> entries;
+
+	for (auto it = begin(); it != end(); ++it) {
+		auto& entry_path = it->file_entry->path;
+		if (it->line == line) {
+			if ((path.is_absolute() and entry_path == path) or
+				(path.is_relative() and path_ends_in(entry_path, path))) {
+				entries.push_back(it);
+			}
+		}
+	}
+
+	return entries;
+}
+
+sdb::source_location
+sdb::die::location() const {
+	return { &file(), line() };
+}
+
+const sdb::line_table::file&
+sdb::die::file() const {
+	std::uint64_t idx;
+	if (abbrev_->tag == DW_TAG_inlined_subroutine) {
+		idx = (*this)[DW_AT_call_file].as_int();
+	}
+	else {
+		idx = (*this)[DW_AT_decl_file].as_int();
+	}
+	return this->cu_->lines().file_names()[idx - 1];
+}
+
+std::uint64_t sdb::die::line() const {
+	if (abbrev_->tag == DW_TAG_inlined_subroutine) {
+		return (*this)[DW_AT_call_line].as_int();
+	}
+	return (*this)[DW_AT_decl_line].as_int();
 }
