@@ -1,7 +1,7 @@
 import sys
 from git import Repo
 
-chapters = list(range(1,13))
+chapters = list(range(1,14))
 chapters.remove(2)
 branches = ['chapter-'+str(i) for i in chapters]
 
