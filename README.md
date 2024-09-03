@@ -15,7 +15,7 @@ This repository contains the source code for the book [Building a Debugger](http
 - Chapter 11: [Object Files](https://github.com/TartanLlama/sdb/tree/chapter-11)
 - Chapter 12: [Debug Information](https://github.com/TartanLlama/sdb/tree/chapter-12)
 - Chapter 13: [Line Tables](https://github.com/TartanLlama/sdb/tree/chapter-13)
-- Chapter 14: Source-Level Breakpoints and Stepping
+- Chapter 14: [Source-Level Breakpoints and Stepping](https://github.com/TartanLlama/sdb/tree/chapter-14)
 - Chapter 15: Call Frame Information
 - Chapter 16: Stack Unwinding
 - Chapter 17: Shared Libraries
@@ -24,4 +24,4 @@ This repository contains the source code for the book [Building a Debugger](http
 - Chapter 20: Variables and Types
 - Chapter 21: Expression Evaluation
 
-Chapters 14 and up are still undergoing technical review.
+Chapters 15 and up are still undergoing technical review.
