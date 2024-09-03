@@ -1,7 +1,5 @@
 #include <cstdio>
-void an_innocent_function() {
-    std::puts("Putting pineapple on pizza...");
-}
+void an_innocent_function() {  std::puts("Putting pineapple on pizza..."); }
 
 void an_innocent_function_end() {}
 

@@ -19,7 +19,15 @@ sdb::breakpoint_site::breakpoint_site(
 	id_ = is_internal_ ? -1 : get_next_id();
 }
 
-
+sdb::breakpoint_site::breakpoint_site(
+	breakpoint* parent, id_type id,
+	process& proc, virt_addr address,
+	bool is_hardware, bool is_internal)
+	: parent_{ parent }, id_(id),
+	process_{ &proc }, address_{ address },
+	is_enabled_{ false }, saved_data_{},
+	is_hardware_{ is_hardware }, is_internal_{ is_internal } {
+}
 
 void sdb::breakpoint_site::enable() {
 	if (is_enabled_) return;

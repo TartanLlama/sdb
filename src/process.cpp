@@ -9,6 +9,7 @@
 #include <sys/uio.h>
 #include <elf.h>
 #include <fstream>
+#include <libsdb/target.hpp>
 
 namespace {
 	void exit_with_perror(
@@ -202,6 +203,8 @@ sdb::stop_reason sdb::process::wait_on_signal() {
 				reason = maybe_resume_from_syscall(reason);
 			}
 		}
+
+		if (target_) target_->notify_stop(reason);
 	}
 
 	return reason;
@@ -514,4 +517,18 @@ std::unordered_map<int, std::uint64_t> sdb::process::get_auxv() const {
 		ret[id] = value;
 	}
 	return ret;
+}
+
+sdb::breakpoint_site&
+sdb::process::create_breakpoint_site(
+	breakpoint* parent, breakpoint_site::id_type id, virt_addr address,
+	bool hardware, bool internal) {
+	if (breakpoint_sites_.contains_address(address)) {
+		error::send("Breakpoint site already created at address " +
+			std::to_string(address.addr()));
+	}
+	return breakpoint_sites_.push(
+		std::unique_ptr<breakpoint_site>(
+			new breakpoint_site(
+				parent, id, *this, address, hardware, internal)));
 }

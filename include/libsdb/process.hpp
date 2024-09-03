@@ -12,6 +12,7 @@
 #include <libsdb/bit.hpp>
 #include <libsdb/watchpoint.hpp>
 #include <unordered_map>
+#include <csignal>
 
 namespace sdb {
 
@@ -68,12 +69,35 @@ namespace sdb {
 	struct stop_reason {
 		stop_reason(int wait_status);
 
+		stop_reason() = default;
+		stop_reason(process_state reason, std::uint8_t info,
+			std::optional<trap_type> trap_reason = std::nullopt,
+			std::optional<syscall_information> syscall_info = std::nullopt)
+			: reason(reason)
+			, info(info)
+			, trap_reason(trap_reason)
+			, syscall_info(syscall_info)
+		{}
+
+		bool is_step() const {
+			return reason == process_state::stopped
+				and info == SIGTRAP
+				and trap_reason == trap_type::single_step;
+		}
+		bool is_breakpoint() const {
+			return reason == process_state::stopped
+				and info == SIGTRAP
+				and (trap_reason == trap_type::software_break
+					or trap_reason == trap_type::hardware_break);
+		}
+
 		process_state reason;
 		std::uint8_t info;
 		std::optional<trap_type> trap_reason;
 		std::optional<syscall_information> syscall_info;
 	};
 
+	class target;
 	class process {
 	public:
 		~process();
@@ -159,6 +183,12 @@ namespace sdb {
 		}
 
 		std::unordered_map<int, std::uint64_t> get_auxv() const;
+
+		void set_target(target* tgt) { target_ = tgt; }
+
+		breakpoint_site& create_breakpoint_site(
+			breakpoint* parent, breakpoint_site::id_type id, virt_addr address,
+			bool hardware = false, bool internal = false);
 	private:
 		process(pid_t pid, bool terminate_on_end, bool is_attached)
 			: pid_(pid), terminate_on_end_(terminate_on_end),
@@ -184,6 +214,7 @@ namespace sdb {
 		syscall_catch_policy syscall_catch_policy_ =
 			syscall_catch_policy::catch_none();
 		bool expecting_syscall_exit_ = false;
+		target* target_ = nullptr;
 	};
 }
 
