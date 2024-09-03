@@ -51,7 +51,7 @@ sdb::process::launch(std::filesystem::path path,
     if (data.size() > 0) {
         waitpid(pid, nullptr, 0);
         auto chars = reinterpret_cast<char*>(data.data());
-        error::send(std::string(chars, chars + data.size() + 1));
+        error::send(std::string(chars, chars + data.size()));
     }
 
     std::unique_ptr<process> proc(
