@@ -1135,3 +1135,10 @@ sdb::call_frame_information::get_cie(file_offset at) const {
 	cie_map_.emplace(offset, cie);
 	return cie_map_.at(offset);
 }
+
+std::unique_ptr<sdb::call_frame_information>
+parse_call_frame_information(sdb::dwarf& dwarf) {
+	auto eh_hdr = parse_eh_hdr(dwarf);
+	return std::make_unique<sdb::call_frame_information>(
+		&dwarf, eh_hdr);
+}

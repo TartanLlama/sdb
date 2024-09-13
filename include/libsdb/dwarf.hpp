@@ -358,10 +358,8 @@ namespace sdb {
 			const std::byte* operator[](file_addr address) const;
 		};
 
-
-		using cie_map_t = std::unordered_map<std::uint32_t, common_information_entry>;
-		call_frame_information(const dwarf* dwarf, cie_map_t cie_map, eh_hdr hdr)
-			: dwarf_(dwarf), cie_map_(std::move(cie_map)), eh_hdr_(hdr) {
+		call_frame_information(const dwarf* dwarf, eh_hdr hdr)
+			: dwarf_(dwarf),  eh_hdr_(hdr) {
 			eh_hdr_.parent = this;
 		}
 
@@ -375,7 +373,7 @@ namespace sdb {
 
 	private:
 		const dwarf* dwarf_;
-		mutable cie_map_t cie_map_;
+		mutable std::unordered_map<std::uint32_t, common_information_entry> cie_map_;
 		eh_hdr eh_hdr_;
 	};
 
