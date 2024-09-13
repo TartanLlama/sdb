@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <libsdb/elf.hpp>
 #include <libsdb/error.hpp>
+#include <libsdb/process.hpp>
+#include <variant>
 
 namespace {
 	class cursor {
@@ -438,7 +440,7 @@ namespace {
 
 		auto elf = cfi.dwarf_info().elf_file();
 		auto current_offset = elf->data_pointer_as_file_offset(cur.position());
-		sdb::file_offset cie_offset { *elf, current_offset.off() - cur.u32() };
+		sdb::file_offset cie_offset{ *elf, current_offset.off() - cur.u32() };
 		auto& cie = cfi.get_cie(cie_offset);
 
 		current_offset = elf->data_pointer_as_file_offset(cur.position());
@@ -1122,7 +1124,7 @@ std::vector<sdb::die> sdb::dwarf::inline_stack_at_address(file_addr address) con
 	return stack;
 }
 
-const sdb::call_frame_information::common_information_entry& 
+const sdb::call_frame_information::common_information_entry&
 sdb::call_frame_information::get_cie(file_offset at) const {
 	auto offset = at.off();
 	if (cie_map_.count(offset)) {
@@ -1130,7 +1132,7 @@ sdb::call_frame_information::get_cie(file_offset at) const {
 	}
 
 	auto section = at.elf_file()->get_section_contents(".eh_frame");
-	cursor cur({ at.elf_file()->file_offset_as_data_pointer(at), section.end()});
+	cursor cur({ at.elf_file()->file_offset_as_data_pointer(at), section.end() });
 	auto cie = parse_cie(cur);
 	cie_map_.emplace(offset, cie);
 	return cie_map_.at(offset);
@@ -1142,3 +1144,231 @@ parse_call_frame_information(sdb::dwarf& dwarf) {
 	return std::make_unique<sdb::call_frame_information>(
 		&dwarf, eh_hdr);
 }
+
+namespace {
+	struct undefined_rule {};
+	struct same_rule {};
+	struct offset_rule {
+		std::int64_t offset;
+	};
+	struct val_offset_rule {
+		std::int64_t offset;
+	};
+	struct register_rule {
+		std::uint32_t reg;
+	};
+	struct cfa_register_rule {
+		std::uint32_t reg;
+		std::int64_t offset;
+	};
+
+	struct unwind_context {
+		cursor cur{ {nullptr, nullptr} };
+		sdb::file_addr location;
+		cfa_register_rule cfa_rule;
+
+		using rule = std::variant<
+			undefined_rule, same_rule, offset_rule,
+			val_offset_rule, register_rule>;
+		using ruleset = std::unordered_map<std::uint32_t, rule>;
+		ruleset cie_register_rules;
+		ruleset register_rules;
+		std::vector<ruleset> rule_stack;
+	};
+
+	void execute_cfi_instruction(
+		const sdb::elf& elf,
+		const sdb::call_frame_information::frame_description_entry& fde,
+		unwind_context& ctx, sdb::file_addr pc) {
+		auto& cie = *fde.cie;
+		auto& cur = ctx.cur;
+
+		auto text_section_start = *elf.get_section_start_address(".text");
+		auto plt_start = elf.get_section_start_address(".got.plt")
+			.value_or(sdb::file_addr{});
+
+		auto opcode = cur.u8();
+		auto primary_opcode = opcode & 0xc0;
+		auto extended_opcode = opcode & 0x3f;
+		if (primary_opcode) {
+			switch (primary_opcode) {
+			case DW_CFA_advance_loc:
+				ctx.location += extended_opcode * cie.code_alignment_factor;
+				break;
+			case DW_CFA_offset: {
+				auto offset =
+					static_cast<std::int64_t>(cur.uleb128()) * cie.data_alignment_factor;
+				ctx.register_rules.emplace(extended_opcode, offset_rule{ offset });
+				break;
+			}
+			case DW_CFA_restore:
+				ctx.register_rules.emplace(
+					extended_opcode, ctx.cie_register_rules.at(extended_opcode));
+				break;
+			}
+		}
+		else if (extended_opcode) {
+			switch (extended_opcode) {
+			case DW_CFA_set_loc: {
+				auto current_offset = elf.data_pointer_as_file_offset(cur.position());
+				auto loc = parse_eh_frame_pointer(
+					elf, cur, cie.fde_pointer_encoding,
+					current_offset.off(), text_section_start.addr(),
+					plt_start.addr(), fde.initial_location.addr());
+				ctx.location = sdb::file_addr{ elf, loc };
+				break;
+			}
+			case DW_CFA_advance_loc1:
+				ctx.location += cur.u8();
+				break;
+			case DW_CFA_advance_loc2:
+				ctx.location += cur.u16();
+				break;
+			case DW_CFA_advance_loc4:
+				ctx.location += cur.u32();
+				break;
+			case DW_CFA_def_cfa:
+				ctx.cfa_rule.reg = cur.uleb128();
+				ctx.cfa_rule.offset = cur.uleb128();
+				break;
+			case DW_CFA_def_cfa_sf:
+				ctx.cfa_rule.reg = cur.uleb128();
+				ctx.cfa_rule.offset = cur.sleb128() * cie.data_alignment_factor;
+				break;
+			case DW_CFA_def_cfa_register:
+				ctx.cfa_rule.reg = cur.uleb128();
+				break;
+			case DW_CFA_def_cfa_offset:
+				ctx.cfa_rule.offset = cur.uleb128();
+				break;
+			case DW_CFA_def_cfa_offset_sf:
+				ctx.cfa_rule.offset = cur.sleb128() * cie.data_alignment_factor;
+				break;
+			case DW_CFA_def_cfa_expression:
+				sdb::error::send("DWARF expressions not yet implemented");
+			case DW_CFA_undefined:
+				ctx.register_rules.emplace(cur.uleb128(), undefined_rule{});
+				break;
+			case DW_CFA_same_value:
+				ctx.register_rules.emplace(cur.uleb128(), same_rule{});
+				break;
+			case DW_CFA_offset_extended: {
+				auto reg = cur.uleb128();
+				auto offset = static_cast<std::int32_t>(
+					cur.uleb128()) * cie.data_alignment_factor;
+				ctx.register_rules.emplace(reg, offset_rule{ offset });
+				break;
+			}
+			case DW_CFA_offset_extended_sf: {
+				auto reg = cur.uleb128();
+				auto offset = cur.sleb128() * cie.data_alignment_factor;
+				ctx.register_rules.emplace(reg, offset_rule{ offset });
+				break;
+			}
+			case DW_CFA_val_offset: {
+				auto reg = cur.uleb128();
+				auto offset = static_cast<std::int32_t>(
+					cur.uleb128()) * cie.data_alignment_factor;
+				ctx.register_rules.emplace(reg, val_offset_rule{ offset });
+				break;
+			}
+			case DW_CFA_val_offset_sf: {
+				auto reg = cur.uleb128();
+				auto offset = cur.sleb128() * cie.data_alignment_factor;
+				ctx.register_rules.emplace(reg, val_offset_rule{ offset });
+				break;
+			}
+			case DW_CFA_register: {
+				auto reg = cur.uleb128();
+				ctx.register_rules.emplace(
+					reg, register_rule{ static_cast<std::uint32_t>(cur.uleb128()) });
+				break;
+			}
+			case DW_CFA_expression:
+				sdb::error::send("DWARF expressions not yet implemented");
+			case DW_CFA_val_expression:
+				sdb::error::send("DWARF expressions not yet implemented");
+			case DW_CFA_restore_extended: {
+				auto reg = cur.uleb128();
+				ctx.register_rules.emplace(reg, ctx.cie_register_rules.at(reg));
+				break;
+			}
+			case DW_CFA_remember_state:
+				ctx.rule_stack.push_back(ctx.register_rules);
+				break;
+			case DW_CFA_restore_state:
+				ctx.register_rules = ctx.rule_stack.back();
+				ctx.rule_stack.pop_back();
+				break;
+			}
+		}
+	}
+
+	sdb::registers execute_unwind_rules(
+		unwind_context& ctx, sdb::registers& old_regs,
+		const sdb::process& proc) {
+		auto unwound_regs = old_regs;
+
+		auto cfa_reg_info = sdb::register_info_by_dwarf(ctx.cfa_rule.reg);
+		auto cfa = std::get<std::uint64_t>(old_regs.read(cfa_reg_info)) +
+			ctx.cfa_rule.offset;
+		old_regs.set_cfa(sdb::virt_addr{ cfa });
+		unwound_regs.write_by_id(sdb::register_id::rsp, { cfa }, false);
+
+		for (auto [reg, rule] : ctx.register_rules) {
+			auto reg_info = sdb::register_info_by_dwarf(reg);
+
+			if (auto undef = std::get_if<undefined_rule>(&rule)) {
+				unwound_regs.undefine(reg_info.id);
+			}
+			else if (auto same = std::get_if<same_rule>(&rule)) {
+				// Do nothing
+			}
+			else if (auto reg = std::get_if<register_rule>(&rule)) {
+				auto other_reg = sdb::register_info_by_dwarf(reg->reg);
+				unwound_regs.write(reg_info, old_regs.read(other_reg), false);
+			}
+			else if (auto offset = std::get_if<offset_rule>(&rule)) {
+				auto addr = sdb::virt_addr{ cfa + offset->offset };
+				auto value = sdb::from_bytes<std::uint64_t>(
+					proc.read_memory(addr, 8).data());
+				unwound_regs.write(reg_info, { value }, false);
+			}
+			else if (auto val_offset = std::get_if<val_offset_rule>(&rule)) {
+				auto addr = cfa + val_offset->offset;
+				unwound_regs.write(reg_info, { addr }, false);
+			}
+		}
+		return unwound_regs;
+	}
+}
+sdb::registers sdb::call_frame_information::unwind(
+	const sdb::process& proc, file_addr pc, registers& regs) const {
+	auto fde_start = eh_hdr_[pc];
+	auto eh_frame_end = dwarf_->elf_file()->get_section_contents(".eh_frame").end();
+
+	cursor cur({ fde_start, eh_frame_end });
+	auto fde = parse_fde(*this, cur);
+	if (pc < fde.initial_location
+		or pc >= fde.initial_location + fde.address_range) {
+		sdb::error::send("No unwind information at PC");
+	}
+
+	unwind_context ctx{};
+	ctx.cur = cursor(fde.cie->instructions);
+
+	while (!ctx.cur.finished()) {
+		execute_cfi_instruction(*dwarf_->elf_file(), fde, ctx, pc);
+	}
+
+	ctx.cie_register_rules = ctx.register_rules;
+	ctx.cur = cursor(fde.instructions);
+	ctx.location = fde.initial_location;
+
+	while (!ctx.cur.finished() and ctx.location <= pc) {
+		execute_cfi_instruction(*dwarf_->elf_file(), fde, ctx, pc);
+	}
+
+	return execute_unwind_rules(ctx, regs, proc);
+}
+

@@ -44,7 +44,7 @@ sdb::file_addr sdb::target::get_pc_file_address() const {
 }
 
 void sdb::target::notify_stop(const sdb::stop_reason& reason) {
-	stack_.reset_inline_height();
+	stack_.unwind();
 }
 
 sdb::stop_reason sdb::target::step_in() {
@@ -159,11 +159,8 @@ sdb::stop_reason sdb::target::step_out() {
         return run_until_address(return_address);
     }
 
-	auto frame_pointer = process_->get_registers()
-		.read_by_id_as<std::uint64_t>(register_id::rbp);
-
-	auto return_address = process_->read_memory_as<std::uint64_t>(
-		virt_addr{ frame_pointer + 8 });
+	auto& regs = stack_.frames()[stack_.current_frame_index() + 1].regs;
+	auto return_address = regs.read_by_id_as<std::uint64_t>(register_id::rip);
 
 	return run_until_address(virt_addr{ return_address });
 }

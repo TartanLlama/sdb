@@ -2,6 +2,7 @@
 #define SDB_DWARF_HPP
 
 #include <libsdb/detail/dwarf.h>
+#include <libsdb/registers.hpp>
 #include <libsdb/types.hpp>
 #include <unordered_map>
 #include <vector>
@@ -330,6 +331,7 @@ namespace sdb {
 	};
 
 	class dwarf;
+	class process;
 	class call_frame_information {
 	public:
 		struct common_information_entry {
@@ -370,6 +372,11 @@ namespace sdb {
 		const dwarf& dwarf_info() const { return *dwarf_; }
 
 		const common_information_entry& get_cie(file_offset at) const;
+
+		registers unwind(
+			const process& proc,
+			file_addr pc,
+			registers& regs) const;
 
 	private:
 		const dwarf* dwarf_;
