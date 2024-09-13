@@ -520,6 +520,7 @@ sdb::compile_unit::abbrev_table() const {
 
 sdb::dwarf::dwarf(const sdb::elf& parent) : elf_(&parent) {
 	compile_units_ = parse_compile_units(*this, parent);
+	cfi_ = parse_call_frame_information(*this);
 }
 
 sdb::die sdb::compile_unit::root() const {
