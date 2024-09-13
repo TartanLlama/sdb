@@ -463,6 +463,13 @@ namespace {
 		sdb::span<const std::byte> instructions = { cur.position(), start + length };
 		return { length, &cie, initial_location, address_range, instructions };
 	}
+
+	std::unique_ptr<sdb::call_frame_information>
+		parse_call_frame_information(sdb::dwarf& dwarf) {
+		auto eh_hdr = parse_eh_hdr(dwarf);
+		return std::make_unique<sdb::call_frame_information>(
+			&dwarf, eh_hdr);
+	}
 }
 
 const std::byte*
@@ -1137,6 +1144,7 @@ sdb::call_frame_information::get_cie(file_offset at) const {
 	cie_map_.emplace(offset, cie);
 	return cie_map_.at(offset);
 }
+<<<<<<< HEAD
 
 std::unique_ptr<sdb::call_frame_information>
 parse_call_frame_information(sdb::dwarf& dwarf) {
@@ -1372,3 +1380,5 @@ sdb::registers sdb::call_frame_information::unwind(
 	return execute_unwind_rules(ctx, regs, proc);
 }
 
+=======
+>>>>>>> 373035c (Move parse_call_frame_information definition)
