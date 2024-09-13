@@ -329,6 +329,56 @@ namespace sdb {
 		die die_;
 	};
 
+	class dwarf;
+	class call_frame_information {
+	public:
+		struct common_information_entry {
+			std::uint32_t length;
+			std::uint64_t code_alignment_factor;
+			std::int64_t data_alignment_factor;
+			bool fde_has_augmentation;
+			std::uint8_t fde_pointer_encoding;
+			span<const std::byte> instructions;
+		};
+
+		struct frame_description_entry {
+			std::uint32_t length;
+			const common_information_entry* cie;
+			file_addr initial_location;
+			std::uint64_t address_range;
+			span<const std::byte> instructions;
+		};
+
+		struct eh_hdr {
+			const std::byte* start;
+			const std::byte* search_table;
+			std::size_t count;
+			std::uint8_t encoding;
+			call_frame_information* parent;
+			const std::byte* operator[](file_addr address) const;
+		};
+
+
+		using cie_map_t = std::unordered_map<std::uint32_t, common_information_entry>;
+		call_frame_information(const dwarf* dwarf, cie_map_t cie_map, eh_hdr hdr)
+			: dwarf_(dwarf), cie_map_(std::move(cie_map)), eh_hdr_(hdr) {
+			eh_hdr_.parent = this;
+		}
+
+		call_frame_information() = delete;
+		call_frame_information(const call_frame_information&) = delete;
+		call_frame_information& operator=(const call_frame_information&) = delete;
+
+		const dwarf& dwarf_info() const { return *dwarf_; }
+
+		const common_information_entry& get_cie(file_offset at) const;
+
+	private:
+		const dwarf* dwarf_;
+		mutable cie_map_t cie_map_;
+		eh_hdr eh_hdr_;
+	};
+
 	class dwarf {
 	public:
 		dwarf(const elf& parent);
@@ -352,6 +402,7 @@ namespace sdb {
 		}
 
 		std::vector<die> inline_stack_at_address(file_addr address) const;
+		const call_frame_information& cfi() const { return *cfi_; }
 
 	private:
 		void index() const;
@@ -368,6 +419,7 @@ namespace sdb {
 		};
 		mutable std::unordered_multimap<std::string, index_entry>
 			function_index_;
+		std::unique_ptr<call_frame_information> cfi_;
 	};
 }
 

@@ -314,6 +314,195 @@ namespace {
 			line_base, line_range, opcode_base,
 			std::move(include_directories), std::move(file_names));
 	}
+
+	std::size_t eh_frame_pointer_encoding_size(std::uint8_t encoding) {
+		switch (encoding & 0x7) {
+		case DW_EH_PE_udata2: return 2;
+		case DW_EH_PE_udata4: return 4;
+		case DW_EH_PE_udata8: return 8;
+		default: sdb::error::send("Invalid pointer encoding");
+		}
+	}
+
+
+	std::uint64_t parse_eh_frame_pointer_with_base(
+		cursor& cur, std::uint8_t encoding, std::uint64_t base) {
+		switch (encoding & 0x0f) {
+		case DW_EH_PE_uleb128: return base + cur.uleb128();
+		case DW_EH_PE_udata2: return base + cur.u16();
+		case DW_EH_PE_udata4: return base + cur.u32();
+		case DW_EH_PE_udata8: return base + cur.u64();
+		case DW_EH_PE_sleb128: return base + cur.sleb128();
+		case DW_EH_PE_sdata2: return base + cur.s16();
+		case DW_EH_PE_sdata4: return base + cur.s32();
+		case DW_EH_PE_sdata8: return base + cur.s64();
+		default: sdb::error::send("Unknown eh_frame pointer encoding");
+		}
+	}
+	std::uint64_t parse_eh_frame_pointer(
+		const sdb::elf& elf,
+		cursor& cur, std::uint8_t encoding,
+		std::uint64_t pc, std::uint64_t text_section_start,
+		std::uint64_t data_section_start, std::uint64_t func_start) {
+		std::uint64_t base = 0;
+		switch (encoding & 0x70) {
+		case DW_EH_PE_absptr: break;
+		case DW_EH_PE_pcrel:
+			if (pc == 0)
+				sdb::error::send("pcrel pointer with no pc");
+			base = pc; break;
+		case DW_EH_PE_textrel:
+			if (text_section_start == 0)
+				sdb::error::send("textrel pointer with no text section start");
+			base = text_section_start; break;
+		case DW_EH_PE_datarel:
+			if (data_section_start == 0)
+				sdb::error::send("datarel pointer with no data section start");
+			base = data_section_start; break;
+		case DW_EH_PE_funcrel:
+			if (func_start == 0)
+				sdb::error::send("funcrel pointer with no function start");
+			base = func_start; break;
+		default: sdb::error::send("Unknown eh_frame pointer encoding");
+		}
+
+		return parse_eh_frame_pointer_with_base(cur, encoding, base);
+	}
+	sdb::call_frame_information::common_information_entry parse_cie(cursor cur) {
+		auto start = cur.position();
+		auto length = cur.u32() + 4;
+		auto id = cur.u32();
+		auto version = cur.u8();
+		auto augmentation = cur.string();
+		auto code_alignment_factor = cur.uleb128();
+		auto data_alignment_factor = cur.sleb128();
+		auto return_address_register = cur.uleb128();
+
+		if (version != 1) {
+			sdb::error::send("Invalid CIE version");
+		}
+
+		if (!augmentation.empty() and augmentation[0] != 'z') {
+			sdb::error::send("Invalid CIE augmentation");
+		}
+
+		std::uint8_t fde_pointer_encoding = DW_EH_PE_udata8 | DW_EH_PE_absptr;
+		for (auto c : augmentation) {
+			switch (c) {
+			case 'z': cur.uleb128(); break;
+			case 'R': fde_pointer_encoding = cur.u8(); break;
+			case 'L': cur.u8(); break;
+			case 'P': {
+				auto encoding = cur.u8();
+				(void)parse_eh_frame_pointer_with_base(cur, encoding, 0);
+				break;
+			}
+			default: sdb::error::send("Invalid CIE augmentation");
+			}
+		}
+
+		sdb::span<const std::byte> instructions = { cur.position(), start + length };
+		bool fde_has_augmentation = !augmentation.empty();
+		return { length, code_alignment_factor, data_alignment_factor,
+			fde_has_augmentation, fde_pointer_encoding, instructions };
+	}
+
+	sdb::call_frame_information::eh_hdr
+		parse_eh_hdr(sdb::dwarf& dwarf) {
+		auto elf = dwarf.elf_file();
+		auto eh_hdr_start = *elf->get_section_start_address(".eh_frame_hdr");
+		auto text_section_start = *elf->get_section_start_address(".text");
+
+		auto eh_hdr_data = elf->get_section_contents(".eh_frame_hdr");
+		cursor cur(eh_hdr_data);
+
+		auto start = cur.position();
+		auto version = cur.u8();
+		auto eh_frame_ptr_enc = cur.u8();
+		auto fde_count_enc = cur.u8();
+		auto table_enc = cur.u8();
+
+		(void)parse_eh_frame_pointer_with_base(cur, eh_frame_ptr_enc, 0);
+		auto fde_count = parse_eh_frame_pointer_with_base(
+			cur, fde_count_enc, 0);
+
+		auto search_table = cur.position();
+		return { start, search_table, fde_count, table_enc, nullptr };
+	}
+
+
+	sdb::call_frame_information::frame_description_entry
+		parse_fde(const sdb::call_frame_information& cfi, cursor cur) {
+		auto start = cur.position();
+		auto length = cur.u32() + 4;
+
+		auto elf = cfi.dwarf_info().elf_file();
+		auto current_offset = elf->data_pointer_as_file_offset(cur.position());
+		sdb::file_offset cie_offset { *elf, current_offset.off() - cur.u32() };
+		auto& cie = cfi.get_cie(cie_offset);
+
+		current_offset = elf->data_pointer_as_file_offset(cur.position());
+		auto text_section_start = elf->get_section_start_address(".text")
+			.value_or(sdb::file_addr{});
+		auto plt_start = elf->get_section_start_address(".got.plt")
+			.value_or(sdb::file_addr{});
+		auto initial_location_addr = parse_eh_frame_pointer(
+			*elf, cur, cie.fde_pointer_encoding, current_offset.off(),
+			text_section_start.addr(), plt_start.addr(), 0);
+		sdb::file_addr initial_location{ *elf, initial_location_addr };
+
+		auto address_range = parse_eh_frame_pointer_with_base(
+			cur, cie.fde_pointer_encoding, 0);
+
+		if (cie.fde_has_augmentation) {
+			auto augmentation_length = cur.uleb128();
+			cur += augmentation_length;
+		}
+		sdb::span<const std::byte> instructions = { cur.position(), start + length };
+		return { length, &cie, initial_location, address_range, instructions };
+	}
+}
+
+const std::byte*
+sdb::call_frame_information::eh_hdr::operator[](file_addr address) const {
+	auto elf = address.elf_file();
+	auto text_section_start = *elf->get_section_start_address(".text");
+	auto encoding_size = eh_frame_pointer_encoding_size(encoding);
+	auto row_size = encoding_size * 2;
+
+	std::size_t low = 0;
+	std::size_t high = count - 1;
+	while (low < high) {
+		std::size_t mid = (low + high) / 2;
+
+		cursor cur({ search_table + mid * row_size,
+								   search_table + count * row_size });
+		auto current_offset = elf->data_pointer_as_file_offset(cur.position());
+		auto eh_hdr_offset = elf->data_pointer_as_file_offset(start);
+		auto entry_address = parse_eh_frame_pointer(*elf, cur, encoding, current_offset.off(),
+			text_section_start.addr(), eh_hdr_offset.off(), 0);
+
+		if (entry_address < address.addr()) {
+			low = mid;
+		}
+		else if (entry_address > address.addr()) {
+			high = mid - 1;
+		}
+		else {
+			high = mid;
+			break;
+		}
+	}
+
+	cursor cur({ search_table + high * row_size + encoding_size,
+		 search_table + count * row_size });
+	auto current_offset = elf->data_pointer_as_file_offset(cur.position());
+	auto eh_hdr_offset = elf->data_pointer_as_file_offset(start);
+	auto fde_offset_int = parse_eh_frame_pointer(
+		*elf, cur, encoding, current_offset.off(),
+		text_section_start.addr(), eh_hdr_offset.off(), 0);
+	sdb::file_offset fde_offset{ *elf, fde_offset_int };
+	return elf->file_offset_as_data_pointer(fde_offset);
 }
 
 const std::unordered_map<std::uint64_t, sdb::abbrev>&
@@ -931,4 +1120,18 @@ std::vector<sdb::die> sdb::dwarf::inline_stack_at_address(file_addr address) con
 		}
 	}
 	return stack;
+}
+
+const sdb::call_frame_information::common_information_entry& 
+sdb::call_frame_information::get_cie(file_offset at) const {
+	auto offset = at.off();
+	if (cie_map_.count(offset)) {
+		return cie_map_.at(offset);
+	}
+
+	auto section = at.elf_file()->get_section_contents(".eh_frame");
+	cursor cur({ at.elf_file()->file_offset_as_data_pointer(at), section.end()});
+	auto cie = parse_cie(cur);
+	cie_map_.emplace(offset, cie);
+	return cie_map_.at(offset);
 }
