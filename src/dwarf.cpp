@@ -479,7 +479,7 @@ sdb::call_frame_information::eh_hdr::operator[](file_addr address) const {
 
 	std::size_t low = 0;
 	std::size_t high = count - 1;
-	while (low < high) {
+	while (low <= high) {
 		std::size_t mid = (low + high) / 2;
 
 		cursor cur({ search_table + mid * row_size,
@@ -490,7 +490,7 @@ sdb::call_frame_information::eh_hdr::operator[](file_addr address) const {
 			text_section_start.addr(), eh_hdr_offset.off(), 0);
 
 		if (entry_address < address.addr()) {
-			low = mid;
+			low = mid + 1;
 		}
 		else if (entry_address > address.addr()) {
 			high = mid - 1;
