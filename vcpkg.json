@@ -1,3 +1,3 @@
 {
-  "dependencies": [ "catch2", "fmt", "zydis" ]
+  "dependencies": [ "readline", "catch2", "fmt", "zydis" ]
 }
