@@ -22,9 +22,5 @@ add_executable(multi_cu multi_cu_main.cpp multi_cu_other.cpp)
 target_compile_options(multi_cu PRIVATE -g -O0 -pie -gdwarf-4)
 add_dependencies(tests multi_cu)
 
-add_executable(except except.cpp)
-target_compile_options(except PRIVATE -g -O0 -pie -gdwarf-4)
-add_dependencies(tests except)
-
 add_test_asm_target(reg_write)
 add_test_asm_target(reg_read)
