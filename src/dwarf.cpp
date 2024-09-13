@@ -481,7 +481,7 @@ sdb::call_frame_information::eh_hdr::operator[](file_addr address) const {
 
 	std::size_t low = 0;
 	std::size_t high = count - 1;
-	while (low < high) {
+	while (low <= high) {
 		std::size_t mid = (low + high) / 2;
 
 		cursor cur({ search_table + mid * row_size,
@@ -492,7 +492,7 @@ sdb::call_frame_information::eh_hdr::operator[](file_addr address) const {
 			text_section_start.addr(), eh_hdr_offset.off(), 0);
 
 		if (entry_address < address.addr()) {
-			low = mid;
+			low = mid + 1;
 		}
 		else if (entry_address > address.addr()) {
 			high = mid - 1;
@@ -529,6 +529,7 @@ sdb::compile_unit::abbrev_table() const {
 
 sdb::dwarf::dwarf(const sdb::elf& parent) : elf_(&parent) {
 	compile_units_ = parse_compile_units(*this, parent);
+	cfi_ = parse_call_frame_information(*this);
 }
 
 sdb::die sdb::compile_unit::root() const {
@@ -1144,14 +1145,6 @@ sdb::call_frame_information::get_cie(file_offset at) const {
 	cie_map_.emplace(offset, cie);
 	return cie_map_.at(offset);
 }
-<<<<<<< HEAD
-
-std::unique_ptr<sdb::call_frame_information>
-parse_call_frame_information(sdb::dwarf& dwarf) {
-	auto eh_hdr = parse_eh_hdr(dwarf);
-	return std::make_unique<sdb::call_frame_information>(
-		&dwarf, eh_hdr);
-}
 
 namespace {
 	struct undefined_rule {};
@@ -1379,6 +1372,3 @@ sdb::registers sdb::call_frame_information::unwind(
 
 	return execute_unwind_rules(ctx, regs, proc);
 }
-
-=======
->>>>>>> 373035c (Move parse_call_frame_information definition)
