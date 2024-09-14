@@ -1255,7 +1255,7 @@ namespace {
 				break;
 			case DW_CFA_offset_extended: {
 				auto reg = cur.uleb128();
-				auto offset = static_cast<std::int32_t>(
+				auto offset = static_cast<std::int64_t>(
 					cur.uleb128()) * cie.data_alignment_factor;
 				ctx.register_rules.emplace(reg, offset_rule{ offset });
 				break;
@@ -1268,7 +1268,7 @@ namespace {
 			}
 			case DW_CFA_val_offset: {
 				auto reg = cur.uleb128();
-				auto offset = static_cast<std::int32_t>(
+				auto offset = static_cast<std::int64_t>(
 					cur.uleb128()) * cie.data_alignment_factor;
 				ctx.register_rules.emplace(reg, val_offset_rule{ offset });
 				break;
