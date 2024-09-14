@@ -1220,13 +1220,13 @@ namespace {
 				break;
 			}
 			case DW_CFA_advance_loc1:
-				ctx.location += cur.u8();
+				ctx.location += cur.u8() * cie.code_alignment_factor;
 				break;
 			case DW_CFA_advance_loc2:
-				ctx.location += cur.u16();
+				ctx.location += cur.u16() * cie.code_alignment_factor;
 				break;
 			case DW_CFA_advance_loc4:
-				ctx.location += cur.u32();
+				ctx.location += cur.u32() * cie.code_alignment_factor;
 				break;
 			case DW_CFA_def_cfa:
 				ctx.cfa_rule.reg = cur.uleb128();
