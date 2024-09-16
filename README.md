@@ -16,12 +16,12 @@ This repository contains the source code for the book [Building a Debugger](http
 - Chapter 12: [Debug Information](https://github.com/TartanLlama/sdb/tree/chapter-12)
 - Chapter 13: [Line Tables](https://github.com/TartanLlama/sdb/tree/chapter-13)
 - Chapter 14: [Source-Level Breakpoints and Stepping](https://github.com/TartanLlama/sdb/tree/chapter-14)
-- Chapter 15: Call Frame Information
-- Chapter 16: Stack Unwinding
+- Chapter 15: [Call Frame Information](https://github.com/TartanLlama/sdb/tree/chapter-15)
+- Chapter 16: [Stack Unwinding](https://github.com/TartanLlama/sdb/tree/chapter-16)
 - Chapter 17: Shared Libraries
 - Chapter 18: Multithreading
 - Chapter 19: DWARF Expressions
 - Chapter 20: Variables and Types
 - Chapter 21: Expression Evaluation
 
-Chapters 15 and up are still undergoing technical review.
+Chapters 17 and up are still undergoing technical review.
