@@ -319,6 +319,7 @@ namespace {
 
     std::size_t eh_frame_pointer_encoding_size(std::uint8_t encoding) {
         switch (encoding & 0x7) {
+        case DW_EH_PE_absptr: return 8;
         case DW_EH_PE_udata2: return 2;
         case DW_EH_PE_udata4: return 4;
         case DW_EH_PE_udata8: return 8;
@@ -330,6 +331,7 @@ namespace {
     std::uint64_t parse_eh_frame_pointer_with_base(
         cursor& cur, std::uint8_t encoding, std::uint64_t base) {
         switch (encoding & 0x0f) {
+        case DW_EH_PE_absptr: return base + cur.u64();
         case DW_EH_PE_uleb128: return base + cur.uleb128();
         case DW_EH_PE_udata2: return base + cur.u16();
         case DW_EH_PE_udata4: return base + cur.u32();
