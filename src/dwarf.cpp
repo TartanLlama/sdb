@@ -378,7 +378,7 @@ namespace {
         auto augmentation = cur.string();
         auto code_alignment_factor = cur.uleb128();
         auto data_alignment_factor = cur.sleb128();
-        auto return_address_register = cur.uleb128();
+        auto return_address_register = cur.u8();
 
         if (version != 1) {
             sdb::error::send("Invalid CIE version");
