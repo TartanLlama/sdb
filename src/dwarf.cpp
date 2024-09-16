@@ -1174,7 +1174,7 @@ namespace {
         using ruleset = std::unordered_map<std::uint32_t, rule>;
         ruleset cie_register_rules;
         ruleset register_rules;
-        std::vector<ruleset> rule_stack;
+        std::vector<std::pair<ruleset, cfa_register_rule>> rule_stack;
     };
 
     void execute_cfi_instruction(
@@ -1295,10 +1295,11 @@ namespace {
                 break;
             }
             case DW_CFA_remember_state:
-                ctx.rule_stack.push_back(ctx.register_rules);
+                ctx.rule_stack.push_back({ ctx.register_rules, ctx.cfa_rule });
                 break;
             case DW_CFA_restore_state:
-                ctx.register_rules = ctx.rule_stack.back();
+                ctx.register_rules = ctx.rule_stack.back().first;
+                ctx.cfa_rule = ctx.rule_stack.back().second;
                 ctx.rule_stack.pop_back();
                 break;
             }
