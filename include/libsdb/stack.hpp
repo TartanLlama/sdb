@@ -43,12 +43,12 @@ namespace sdb {
         virt_addr get_pc() const;
 
     private:
-        void create_branch_frames(
+        void create_inline_stack_frames(
             const sdb::registers& regs,
             const std::vector<sdb::die> inline_stack,
             file_addr pc);
 
-        void create_leaf_frame(
+        void create_base_frame(
             const registers& regs,
             const std::vector<sdb::die> inline_stack,
             file_addr pc,

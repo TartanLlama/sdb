@@ -56,11 +56,11 @@ void sdb::stack::unwind() {
 		if (inline_stack.empty()) return;
 
 		if (inline_stack.size() > 1) {
-			create_leaf_frame(regs, inline_stack, file_pc, true);
-			create_branch_frames(regs, inline_stack, file_pc);
+			create_base_frame(regs, inline_stack, file_pc, true);
+			create_inline_stack_frames(regs, inline_stack, file_pc);
 		}
 		else {
-			create_leaf_frame(regs, inline_stack, file_pc, false);
+			create_base_frame(regs, inline_stack, file_pc, false);
 		}
 		regs = dwarf.cfi().unwind(proc, file_pc, frames_.back().regs);
 		virt_pc = virt_addr{
@@ -72,7 +72,7 @@ void sdb::stack::unwind() {
 }
 
 
-void sdb::stack::create_leaf_frame(
+void sdb::stack::create_base_frame(
 	const registers& regs,
 	const std::vector<sdb::die> inline_stack,
 	file_addr pc,
@@ -87,7 +87,7 @@ void sdb::stack::create_leaf_frame(
 		line_entry->file_entry, line_entry->line };
 }
 
-void sdb::stack::create_branch_frames(
+void sdb::stack::create_inline_stack_frames(
 	const registers& regs,
 	const std::vector<sdb::die> inline_stack,
 	file_addr pc) {
