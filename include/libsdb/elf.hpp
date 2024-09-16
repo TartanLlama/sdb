@@ -64,7 +64,7 @@ namespace sdb {
         const dwarf& get_dwarf() const { return *dwarf_; }
 
         file_offset data_pointer_as_file_offset(const std::byte* ptr) const {
-            return { *this, ptr - data_ };
+            return file_offset(*this, ptr - data_);
         }
         const std::byte* file_offset_as_data_pointer(file_offset offset) const {
             return data_ + offset.off();
