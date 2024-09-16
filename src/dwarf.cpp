@@ -373,18 +373,29 @@ namespace {
         auto length = cur.u32() + 4;
         auto id = cur.u32();
         auto version = cur.u8();
-        auto augmentation = cur.string();
-        auto code_alignment_factor = cur.uleb128();
-        auto data_alignment_factor = cur.sleb128();
-        auto return_address_register = cur.uleb128();
 
-        if (version != 1) {
+        if (!(version == 1 or version == 3 or version == 4)) {
             sdb::error::send("Invalid CIE version");
         }
+
+        auto augmentation = cur.string();
 
         if (!augmentation.empty() and augmentation[0] != 'z') {
             sdb::error::send("Invalid CIE augmentation");
         }
+
+        if (version == 3 or version == 4) {
+            auto address_size = cur.u8();
+            auto segment_size = cur.u8();
+            if (address_size != 8)
+                sdb::error::send("Invalid address size");
+            if (segment_size != 0) 
+                sdb::error::send("Invalid segment size");
+        }
+
+        auto code_alignment_factor = cur.uleb128();
+        auto data_alignment_factor = cur.sleb128();
+        auto return_address_register = version == 1 ? cur.u8() : cur.uleb128();
 
         std::uint8_t fde_pointer_encoding = DW_EH_PE_udata8 | DW_EH_PE_absptr;
         for (auto c : augmentation) {
