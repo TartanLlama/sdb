@@ -493,6 +493,8 @@ sdb::call_frame_information::eh_hdr::operator[](file_addr address) const {
             low = mid + 1;
         }
         else if (entry_address > address.addr()) {
+            if (mid == 0)
+                sdb::error::send("Address not found in eh_hdr");
             high = mid - 1;
         }
         else {
