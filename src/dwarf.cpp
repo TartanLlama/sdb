@@ -440,7 +440,7 @@ namespace {
 
 		auto elf = cfi.dwarf_info().elf_file();
 		auto current_offset = elf->data_pointer_as_file_offset(cur.position());
-		sdb::file_offset cie_offset{ *elf, current_offset.off() - cur.u32() };
+		sdb::file_offset cie_offset{ *elf, current_offset.off() - cur.s32() };
 		auto& cie = cfi.get_cie(cie_offset);
 
 		current_offset = elf->data_pointer_as_file_offset(cur.position());
