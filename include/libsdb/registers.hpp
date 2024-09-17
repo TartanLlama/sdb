@@ -29,13 +29,8 @@ namespace sdb {
         void write_by_id(register_id id, value val, bool commit = true) {
             write(register_info_by_id(id), val, commit);
         }
-        bool is_undefined(register_id id) const {
-            return std::find(begin(undefined_), end(undefined_), id)
-                != end(undefined_);
-        }
-        void undefine(register_id id) {
-            undefined_.push_back(id);
-        }
+        bool is_undefined(register_id id) const;
+        void undefine(register_id id);
 
         virt_addr cfa() const { return cfa_; }
         void set_cfa(virt_addr addr) { cfa_ = addr; }
@@ -47,7 +42,7 @@ namespace sdb {
 
         user data_;
         process* proc_;
-        std::vector<register_id> undefined_;
+        std::vector<std::size_t> undefined_;
         virt_addr cfa_;
     };
 }

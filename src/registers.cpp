@@ -98,3 +98,14 @@ void sdb::registers::flush() {
         proc_->write_user_area(reg_offset, bytes);
     }
 }
+
+bool sdb::registers::is_undefined(register_id id) const {
+    std::size_t canonical_offset = register_info_by_id(id).offset >> 1;
+    return std::find(begin(undefined_), end(undefined_), canonical_offset)
+        != end(undefined_);
+}
+
+void sdb::registers::undefine(register_id id) {
+    std::size_t canonical_offset = register_info_by_id(id).offset >> 1;
+    undefined_.push_back(canonical_offset);
+}
