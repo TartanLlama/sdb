@@ -733,3 +733,34 @@ TEST_CASE("Shared library tracing works", "[dynlib]") {
     REQUIRE(target->get_pc_file_address().elf_file()->path().filename() == "libmeow.so");
     close(dev_null);
 }
+
+#include <set>
+TEST_CASE("Multi-threading works", "[threads]") {
+    auto dev_null = open("/dev/null", O_WRONLY);
+    auto target = target::launch("targets/multi_threaded", dev_null);
+    auto& proc = target->get_process();
+
+    target->create_function_breakpoint("say_hi").enable();
+
+    std::set<pid_t> tids;
+
+    stop_reason reason;
+    do {
+        proc.resume_all_threads();
+        reason = proc.wait_on_signal();
+        for (auto& [tid, thread] : proc.thread_states()) {
+            if (thread.reason.reason == sdb::process_state::stopped and
+                thread.reason.info == SIGTRAP and
+                tid != proc.pid()) {
+                tids.insert(tid);
+            }
+        }
+    } while (tids.size() < 10);
+
+    REQUIRE(tids.size() == 10);
+
+    proc.resume_all_threads();
+    reason = proc.wait_on_signal();
+    REQUIRE(reason.reason == sdb::process_state::exited);
+    close(dev_null);
+}
