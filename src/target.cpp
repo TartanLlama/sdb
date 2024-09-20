@@ -70,25 +70,29 @@ sdb::file_addr sdb::target::get_pc_file_address(
 }
 
 void sdb::target::notify_stop(const sdb::stop_reason& reason) {
-    stack_.unwind();
+    threads_.at(reason.tid).frames.unwind();
 }
 
-sdb::stop_reason sdb::target::step_in() {
-    auto& stack = get_stack();
+sdb::stop_reason sdb::target::step_in(std::optional<pid_t> otid) {
+    auto tid = otid.value_or(process_->current_thread());
+    auto& stack = get_stack(tid);
+    auto& thread = threads_.at(tid);
     if (stack.inline_height() > 0) {
         stack.simulate_inlined_step_in();
-        return stop_reason(process_state::stopped, SIGTRAP, trap_type::single_step);
+        stop_reason reason (tid, process_state::stopped, SIGTRAP, trap_type::single_step);
+        thread.state->reason = reason;
+        return reason;
     }
 
-    auto orig_line = line_entry_at_pc();
+    auto orig_line = line_entry_at_pc(tid);
     do {
-        auto reason = process_->step_instruction();
+        auto reason = process_->step_instruction(tid);
         if (!reason.is_step()) return reason;
-    } while ((line_entry_at_pc() == orig_line
-        or line_entry_at_pc()->end_sequence)
-        and line_entry_at_pc() != line_table::iterator{});
+    } while ((line_entry_at_pc(tid) == orig_line
+        or line_entry_at_pc(tid)->end_sequence)
+        and line_entry_at_pc(tid) != line_table::iterator{});
 
-    auto pc = get_pc_file_address();
+    auto pc = get_pc_file_address(tid);
     if (pc.elf_file() != nullptr) {
         auto& dwarf = pc.elf_file()->get_dwarf();
         auto func = dwarf.function_containing_address(pc);
@@ -96,13 +100,15 @@ sdb::stop_reason sdb::target::step_in() {
             auto line = line_entry_at_pc();
             if (line != line_table::iterator{}) {
                 ++line;
-                return run_until_address(line->address.to_virt_addr());
+                return run_until_address(line->address.to_virt_addr(), tid);
             }
         }
     }
 
-    return stop_reason(
-        process_state::stopped, SIGTRAP, trap_type::single_step);
+    stop_reason reason(
+        tid, process_state::stopped, SIGTRAP, trap_type::single_step);
+    thread.state->reason = reason;
+    return reason;
 }
 
 sdb::line_table::iterator
@@ -141,8 +147,11 @@ sdb::stop_reason sdb::target::run_until_address(
 }
 
 
-sdb::stop_reason sdb::target::step_over() {
-    auto orig_line = line_entry_at_pc();
+sdb::stop_reason sdb::target::step_over(std::optional<pid_t> otid) {
+    auto tid = otid.value_or(process_->current_thread());
+    auto& thread = threads_.at(tid);
+    auto& stack = get_stack(tid);
+    auto orig_line = line_entry_at_pc(tid);
     disassembler disas(*process_);
     sdb::stop_reason reason;
     auto& stack = get_stack();
@@ -153,27 +162,33 @@ sdb::stop_reason sdb::target::step_over() {
         if (at_start_of_inline_frame) {
             auto frame_to_skip = inline_stack[inline_stack.size() - stack.inline_height()];
             auto return_address = frame_to_skip.high_pc().to_virt_addr();
-            reason = run_until_address(return_address);
+            reason = run_until_address(return_address, tid);
             if (!reason.is_step()
-                or process_->get_pc() != return_address) {
+                or process_->get_pc(tid) != return_address) {
+                thread.state->reason = reason;
                 return reason;
             }
         }
-        else if (auto instructions = disas.disassemble(2, process_->get_pc());
+        else if (auto instructions = disas.disassemble(2, process_->get_pc(tid));
             instructions[0].text.rfind("call") == 0) {
             reason = run_until_address(instructions[1].address);
             if (!reason.is_step()
-                or process_->get_pc() != instructions[1].address) {
+                or process_->get_pc(tid) != instructions[1].address) {
+                thread.state->reason = reason;
                 return reason;
             }
         }
         else {
-            reason = process_->step_instruction();
-            if (!reason.is_step()) return reason;
+            reason = process_->step_instruction(tid);
+            if (!reason.is_step()) {
+                thread.state->reason = reason;
+                return reason;
+            }
         }
-    } while ((line_entry_at_pc() == orig_line
-        or line_entry_at_pc()->end_sequence)
-        and line_entry_at_pc() != line_table::iterator{});
+    } while ((line_entry_at_pc(tid) == orig_line
+        or line_entry_at_pc(tid)->end_sequence)
+        and line_entry_at_pc(tid) != line_table::iterator{});
+    thread.state->reason = reason;
     return reason;
 }
 
@@ -367,4 +382,17 @@ void sdb::target::reload_dynamic_libraries() {
     breakpoints_.for_each([&](auto& bp) {
         bp.resolve();
         });
+}
+
+void sdb::target::notify_thread_lifecycle_event(
+    const stop_reason& reason) {
+    auto tid = reason.tid;
+    if (reason.reason == process_state::stopped) {
+        auto& state = process_->thread_states()[tid];
+        threads_.emplace(
+            tid, thread{ &state, stack{this, tid} });
+    }
+    else {
+        threads_.erase(tid);
+    }
 }

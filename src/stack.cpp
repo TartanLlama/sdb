@@ -3,7 +3,7 @@
 
 std::vector<sdb::die>
 sdb::stack::inline_stack_at_pc() const {
-	auto pc = target_->get_pc_file_address();
+	auto pc = target_->get_pc_file_address(tid_);
 	if (!pc.elf_file()) return {};
 	return pc.elf_file()->get_dwarf().inline_stack_at_address(pc);
 }
@@ -40,10 +40,10 @@ void sdb::stack::unwind() {
 	reset_inline_height();
 	current_frame_ = inline_height_;
 
-	auto virt_pc = target_->get_process().get_pc();
-	auto file_pc = target_->get_pc_file_address();
+	auto virt_pc = target_->get_process().get_pc(tid_);
+	auto file_pc = target_->get_pc_file_address(tid_);
 	auto& proc = target_->get_process();
-	auto regs = proc.get_registers();
+	auto regs = proc.get_registers(tid_);
 
 	frames_.clear();
 

@@ -107,7 +107,6 @@ namespace sdb {
         std::unique_ptr<process> process_;
         elf_collection elves_;
         elf* main_elf_;
-        stack stack_;
         stoppoint_collection<breakpoint> breakpoints_;
         virt_addr dynamic_linker_rendezvous_address_;
         std::unordered_map<pid_t, thread> threads_;
