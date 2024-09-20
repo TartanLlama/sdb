@@ -160,12 +160,12 @@ sdb::stop_reason sdb::target::step_out() {
         return run_until_address(return_address);
     }
 
-	auto& regs = stack_.frames()[stack_.current_frame_index() + 1].regs;
+	auto& regs = stack.frames()[stack.current_frame_index() + 1].regs;
 	virt_addr return_address{ regs.read_by_id_as<std::uint64_t>(register_id::rip) };
 
 	sdb::stop_reason reason;
-	for (auto frames = stack_.frames().size();
-		stack_.frames().size() >= frames;) {
+	for (auto frames = stack.frames().size();
+		stack.frames().size() >= frames;) {
 		reason = run_until_address(return_address);
 		if (!reason.is_breakpoint()
 			or process_->get_pc() != return_address) {
