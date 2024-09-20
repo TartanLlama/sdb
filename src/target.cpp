@@ -64,8 +64,9 @@ sdb::target::attach(pid_t pid) {
     return tgt;
 }
 
-sdb::file_addr sdb::target::get_pc_file_address() const {
-    return process_->get_pc().to_file_addr(elves_);
+sdb::file_addr sdb::target::get_pc_file_address(
+    std::optional<pid_t> otid) const {
+    return process_->get_pc(otid).to_file_addr(elves_);
 }
 
 void sdb::target::notify_stop(const sdb::stop_reason& reason) {
@@ -105,15 +106,17 @@ sdb::stop_reason sdb::target::step_in() {
 }
 
 sdb::line_table::iterator
-sdb::target::line_entry_at_pc() const {
-    auto pc = get_pc_file_address();
+sdb::target::line_entry_at_pc(std::optional<pid_t> otid) const {
+    auto pc = get_pc_file_address(otid);
     if (!pc.elf_file()) return line_table::iterator();
     auto cu = pc.elf_file()->get_dwarf().compile_unit_containing_address(pc);
     if (!cu) return line_table::iterator();
     return cu->lines().get_entry_by_address(pc);
 }
 
-sdb::stop_reason sdb::target::run_until_address(virt_addr address) {
+sdb::stop_reason sdb::target::run_until_address(
+    virt_addr address, std::optional<pid_t> otid) {
+    auto tid = otid.value_or(process_->current_thread());
     breakpoint_site* breakpoint_to_remove = nullptr;
     if (!process_->breakpoint_sites().contains_address(address)) {
         breakpoint_to_remove = &process_->create_breakpoint_site(
@@ -121,10 +124,10 @@ sdb::stop_reason sdb::target::run_until_address(virt_addr address) {
         breakpoint_to_remove->enable();
     }
 
-    process_->resume();
-    auto reason = process_->wait_on_signal();
+    process_->resume(tid);
+    auto reason = process_->wait_on_signal(tid);
     if (reason.is_breakpoint()
-        and process_->get_pc() == address) {
+        and process_->get_pc(tid) == address) {
         reason.trap_reason = trap_type::single_step;
     }
 
@@ -133,6 +136,7 @@ sdb::stop_reason sdb::target::run_until_address(virt_addr address) {
             breakpoint_to_remove->address());
     }
 
+    threads_.at(tid).state->reason = reason;
     return reason;
 }
 
@@ -173,7 +177,9 @@ sdb::stop_reason sdb::target::step_over() {
     return reason;
 }
 
-sdb::stop_reason sdb::target::step_out() {
+sdb::stop_reason sdb::target::step_out(std::optional<pid_t> otid) {
+    auto tid = otid.value_or(process_->current_thread());
+    auto& stack = get_stack(tid);
     auto inline_stack = stack_.inline_stack_at_pc();
     auto has_inline_frames = inline_stack.size() > 1;
     auto at_inline_frame = stack_.inline_height() < inline_stack.size() - 1;
@@ -181,7 +187,7 @@ sdb::stop_reason sdb::target::step_out() {
     if (has_inline_frames and at_inline_frame) {
         auto current_frame = inline_stack[inline_stack.size() - stack_.inline_height() - 1];
         auto return_address = current_frame.high_pc().to_virt_addr();
-        return run_until_address(return_address);
+        return run_until_address(return_address, tid);
     }
 
     auto& regs = stack_.frames()[stack_.current_frame_index() + 1].regs;
@@ -190,7 +196,7 @@ sdb::stop_reason sdb::target::step_out() {
     sdb::stop_reason reason;
     for (auto frames = stack_.frames().size();
         stack_.frames().size() >= frames;) {
-        reason = run_until_address(return_address);
+        reason = run_until_address(return_address, tid);
         if (!reason.is_breakpoint()
             or process_->get_pc() != return_address) {
             return reason;

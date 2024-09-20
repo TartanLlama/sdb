@@ -42,6 +42,9 @@ namespace sdb {
         const registers& regs() const;
         virt_addr get_pc() const;
 
+        stack(target* tgt, pid_t tid) : target_(tgt), tid_(tid) {}
+        pid_t tid() const { return tid_; }
+
     private:
         void create_inline_stack_frames(
             const sdb::registers& regs,
@@ -58,6 +61,7 @@ namespace sdb {
         std::uint32_t inline_height_ = 0;
         std::vector<stack_frame> frames_;
         std::size_t current_frame_ = 0;
+        pid_t tid_ = 0;
     };
 }
 

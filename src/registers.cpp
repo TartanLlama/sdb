@@ -76,26 +76,26 @@ void sdb::registers::write(const register_info& info, value val, bool commit) {
 
     if (commit) {
         if (info.type == register_type::fpr) {
-            proc_->write_fprs(data_.i387);
+            proc_->write_fprs(data_.i387, tid_);
         }
         else {
             auto aligned_offset = info.offset & ~0b111;
             proc_->write_user_area(aligned_offset,
-                from_bytes<std::uint64_t>(bytes + aligned_offset));
+                from_bytes<std::uint64_t>(bytes + aligned_offset), tid_);
         }
     }
 }
 
 void sdb::registers::flush() {
-    proc_->write_fprs(data_.i387);
-    proc_->write_gprs(data_.regs);
+    proc_->write_fprs(data_.i387, tid_);
+    proc_->write_gprs(data_.regs, tid_);
     auto info = register_info_by_id(register_id::dr0);
     for (auto i = 0; i < 8; ++i) {
         if (i == 4 or i == 5) continue;
         auto reg_offset = info.offset + sizeof(std::uint64_t) * i;
         auto ptr = reinterpret_cast<std::byte*>(data_.u_debugreg + i);
         auto bytes = from_bytes<std::uint64_t>(ptr);
-        proc_->write_user_area(reg_offset, bytes);
+        proc_->write_user_area(reg_offset, bytes, tid_);
     }
 }
 
