@@ -7,6 +7,7 @@
 #include <libsdb/stack.hpp>
 #include <libsdb/dwarf.hpp>
 #include <libsdb/breakpoint.hpp>
+#include <link.h>
 
 namespace sdb {
     class target {
@@ -22,8 +23,6 @@ namespace sdb {
 
         process& get_process() { return *process_; }
         const process& get_process() const { return *process_; }
-        elf& get_elf() { return *elf_; }
-        const elf& get_elf() const { return *elf_; }
         void notify_stop(const sdb::stop_reason& reason);
         file_addr get_pc_file_address() const;
 
@@ -62,16 +61,32 @@ namespace sdb {
         std::string function_name_at_address(
             virt_addr address) const;
 
+        std::optional<r_debug> read_dynamic_linker_rendezvous() const;
+
+        elf_collection& get_elves() { return elves_; }
+        const elf_collection& get_elves() const { return elves_; }
+        elf& get_main_elf() { return *main_elf_; }
+        const elf& get_main_elf() const { return *main_elf_; }
+
+        std::vector<line_table::iterator> get_line_entries_by_line(
+            std::filesystem::path path, std::size_t line) const;
     private:
         target(std::unique_ptr<process> proc, std::unique_ptr<elf> obj)
-            : process_(std::move(proc)), elf_(std::move(obj)),
-            stack_(this)
-        {}
+            : process_(std::move(proc))
+            , stack_(this)
+            , main_elf_(obj.get()) {
+            elves_.push(std::move(obj));
+        }
+
+        void resolve_dynamic_linker_rendezvous();
+        void reload_dynamic_libraries();
 
         std::unique_ptr<process> process_;
-        std::unique_ptr<elf> elf_;
+        elf_collection elves_;
+        elf* main_elf_;
         stack stack_;
         stoppoint_collection<breakpoint> breakpoints_;
+        virt_addr dynamic_linker_rendezvous_address_;
     };
 }
 

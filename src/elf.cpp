@@ -215,3 +215,33 @@ std::optional<const Elf64_Sym*>
 sdb::elf::get_symbol_containing_address(virt_addr address) const {
 	return get_symbol_containing_address(address.to_file_addr(*this));
 }
+
+const sdb::elf* sdb::elf_collection::get_elf_containing_address(
+	virt_addr address) const {
+	for (auto& elf : elves_) {
+		if (auto section = elf->get_section_containing_address(address); section) {
+			return elf.get();
+		}
+	}
+	return nullptr;
+}
+
+const sdb::elf* sdb::elf_collection::get_elf_by_path(
+	std::filesystem::path path) const {
+	for (auto& elf : elves_) {
+		if (elf->path() == path) {
+			return elf.get();
+		}
+	}
+	return nullptr;
+}
+
+const sdb::elf* sdb::elf_collection::get_elf_by_filename(
+	std::string_view name) const {
+	for (auto& elf : elves_) {
+		if (elf->path().filename() == name) {
+			return elf.get();
+		}
+	}
+	return nullptr;
+}

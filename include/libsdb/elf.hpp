@@ -9,6 +9,7 @@
 #include <optional>
 #include <libsdb/types.hpp>
 #include <map>
+#include <string_view>
 
 namespace sdb {
     class dwarf;
@@ -98,6 +99,38 @@ namespace sdb {
             symbol_addr_map_;
         std::unique_ptr<dwarf> dwarf_;
     };
+
+    class elf_collection {
+    public:
+        void push(std::unique_ptr<elf> elf) {
+            elves_.push_back(std::move(elf));
+        }
+
+        template <class F>
+        void for_each(F f);
+        template <class F>
+        void for_each(F f) const;
+
+        const elf* get_elf_containing_address(virt_addr address) const;
+        const elf* get_elf_by_path(std::filesystem::path path) const;
+        const elf* get_elf_by_filename(std::string_view name) const;
+
+    private:
+        std::vector<std::unique_ptr<elf>> elves_;
+    };
+
+    template <class F>
+    void elf_collection::for_each(F f) {
+        for (auto& elf : elves_) {
+            f(*elf);
+        }
+    }
+    template <class F>
+    void elf_collection::for_each(F f) const {
+        for (const auto& elf : elves_) {
+            f(*elf);
+        }
+    }
 }
 
 #endif

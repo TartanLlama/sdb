@@ -24,3 +24,8 @@ add_dependencies(tests multi_cu)
 
 add_test_asm_target(reg_write)
 add_test_asm_target(reg_read)
+
+add_test_cpp_target(marshmallow)
+add_library(meow SHARED "libmeow.cpp")
+target_compile_options(meow PRIVATE -g -O0 -fPIC -gdwarf-4)
+target_link_libraries(marshmallow PRIVATE meow)

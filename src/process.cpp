@@ -187,11 +187,18 @@ sdb::stop_reason sdb::process::wait_on_signal() {
 		augment_stop_reason(reason);
 
 		auto instr_begin = get_pc() - 1;
-		if (reason.info == SIGTRAP) {
-			if (reason.trap_reason == trap_type::software_break and
-				breakpoint_sites_.contains_address(instr_begin) and
-				breakpoint_sites_.get_by_address(instr_begin).is_enabled()) {
-				set_pc(instr_begin);
+		if (reason.trap_reason == trap_type::software_break and
+			breakpoint_sites_.contains_address(instr_begin) and
+			breakpoint_sites_.get_by_address(instr_begin).is_enabled()) {
+			set_pc(instr_begin);
+
+			auto& bp = breakpoint_sites_.get_by_address(instr_begin);
+			if (bp.parent_) {
+				bool should_restart = bp.parent_->notify_hit();
+				if (should_restart) {
+					resume();
+					return wait_on_signal();
+				}
 			}
 			else if (reason.trap_reason == trap_type::hardware_break) {
 				auto id = get_current_hardware_stoppoint();
@@ -263,10 +270,17 @@ sdb::process::read_memory(virt_addr address, std::size_t amount) const {
 	std::vector<std::byte> ret(amount);
 
 	iovec local_desc{ ret.data(), ret.size() };
-	iovec remote_desc{ reinterpret_cast<void*>(address.addr()), amount };
+	std::vector<iovec> remote_descs;
+    while (amount > 0) {
+        auto up_to_next_page = 0x1000 - (address.addr() & 0xfff);
+        auto chunk_size = std::min(amount, up_to_next_page);
+        remote_descs.push_back({ reinterpret_cast<void*>(address.addr()), chunk_size });
+        amount -= chunk_size;
+        address += chunk_size;
+    }
 
 	if (process_vm_readv(pid_, &local_desc, /*liovcnt=*/1,
-		&remote_desc, /*riovcnt=*/1, /*flags=*/0) < 0) {
+		remote_descs.data(), /*riovcnt=*/remote_descs.size(), /*flags=*/0) < 0) {
 		error::send_errno("Could not read process memory");
 	}
 	return ret;
