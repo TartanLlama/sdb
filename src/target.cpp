@@ -154,7 +154,6 @@ sdb::stop_reason sdb::target::step_over(std::optional<pid_t> otid) {
     auto orig_line = line_entry_at_pc(tid);
     disassembler disas(*process_);
     sdb::stop_reason reason;
-    auto& stack = get_stack();
     do {
         auto inline_stack = stack.inline_stack_at_pc();
         auto at_start_of_inline_frame = stack.inline_height() > 0;
@@ -195,9 +194,9 @@ sdb::stop_reason sdb::target::step_over(std::optional<pid_t> otid) {
 sdb::stop_reason sdb::target::step_out(std::optional<pid_t> otid) {
     auto tid = otid.value_or(process_->current_thread());
     auto& stack = get_stack(tid);
-    auto inline_stack = stack_.inline_stack_at_pc();
+    auto inline_stack = stack.inline_stack_at_pc();
     auto has_inline_frames = inline_stack.size() > 1;
-    auto at_inline_frame = stack_.inline_height() < inline_stack.size() - 1;
+    auto at_inline_frame = stack.inline_height() < inline_stack.size() - 1;
 
     if (has_inline_frames and at_inline_frame) {
         auto current_frame = inline_stack[inline_stack.size() - stack.inline_height() - 1];

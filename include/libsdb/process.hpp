@@ -68,6 +68,7 @@ namespace sdb {
 	};
 
 	struct stop_reason {
+		stop_reason() = default;
 		stop_reason(pid_t tid, int wait_status);
 
 		stop_reason(pid_t tid, process_state reason, std::uint8_t info,
@@ -149,7 +150,7 @@ namespace sdb {
 		const stoppoint_collection<breakpoint_site>&
 			breakpoint_sites() const { return breakpoint_sites_; }
 
-		void set_pc(std::optional<pid_t> otid = std::nullopt);
+		void set_pc(virt_addr address, std::optional<pid_t> otid = std::nullopt);
 
 		std::vector<std::byte> read_memory(
 			virt_addr address, std::size_t amount) const;

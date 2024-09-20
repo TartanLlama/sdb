@@ -116,7 +116,7 @@ sdb::process::~process() {
     }
 }
 
-sdb::stop_reason sdb::process::step_instruction() {
+sdb::stop_reason sdb::process::step_instruction(std::optional<pid_t> otid) {
     auto tid = otid.value_or(current_thread_);
     std::optional<breakpoint_site*> to_reenable;
     auto pc = get_pc(tid);
@@ -219,7 +219,7 @@ sdb::stop_reason sdb::process::wait_on_signal(pid_t to_await) {
     return reason;
 }
 
-void sdb::process::read_all_registers() {
+void sdb::process::read_all_registers(pid_t tid) {
     if (ptrace(PTRACE_GETREGS, tid, nullptr, &get_registers(tid).data_.regs) < 0) {
         error::send_errno("Could not read GPR registers");
     }
@@ -235,24 +235,6 @@ void sdb::process::read_all_registers() {
         if (errno != 0) error::send_errno("Could not read debug register");
 
         get_registers(tid).data_.u_debugreg[i] = data;
-    }
-}
-
-void sdb::process::write_user_area(std::size_t offset, std::uint64_t data) {
-    if (ptrace(PTRACE_POKEUSER, pid_, offset, data) < 0) {
-        error::send_errno("Could not write to user area");
-    }
-}
-
-void sdb::process::write_fprs(const user_fpregs_struct& fprs) {
-    if (ptrace(PTRACE_SETFPREGS, pid_, nullptr, &fprs) < 0) {
-        error::send_errno("Could not write floating point registers");
-    }
-}
-
-void sdb::process::write_gprs(const user_regs_struct& gprs) {
-    if (ptrace(PTRACE_SETREGS, pid_, nullptr, &gprs) < 0) {
-        error::send_errno("Could not write general purpose registers");
     }
 }
 
