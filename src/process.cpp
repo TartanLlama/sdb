@@ -227,14 +227,22 @@ sdb::breakpoint_site& sdb::process::create_breakpoint_site(
 }
 
 std::vector<std::byte>
-sdb::process::read_memory(virt_addr address, std::size_t amount) const {
+sdb::process::read_memory(
+	virt_addr address, std::size_t amount) const {
 	std::vector<std::byte> ret(amount);
 
 	iovec local_desc{ ret.data(), ret.size() };
-	iovec remote_desc{ reinterpret_cast<void*>(address.addr()), amount };
+	std::vector<iovec> remote_descs;
+	while (amount > 0) {
+		auto up_to_next_page = 0x1000 - (address.addr() & 0xfff);
+		auto chunk_size = std::min(amount, up_to_next_page);
+		remote_descs.push_back({ reinterpret_cast<void*>(address.addr()), chunk_size });
+		amount -= chunk_size;
+		address += chunk_size;
+	}
 
 	if (process_vm_readv(pid_, &local_desc, /*liovcnt=*/1,
-		&remote_desc, /*riovcnt=*/1, /*flags=*/0) < 0) {
+		remote_descs.data(), /*riovcnt=*/remote_descs.size(), /*flags=*/0) < 0) {
 		error::send_errno("Could not read process memory");
 	}
 	return ret;
