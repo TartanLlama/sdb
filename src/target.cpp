@@ -185,7 +185,7 @@ sdb::stop_reason sdb::target::step_out(std::optional<pid_t> otid) {
     auto at_inline_frame = stack_.inline_height() < inline_stack.size() - 1;
 
     if (has_inline_frames and at_inline_frame) {
-        auto current_frame = inline_stack[inline_stack.size() - stack_.inline_height() - 1];
+        auto current_frame = inline_stack[inline_stack.size() - stack.inline_height() - 1];
         auto return_address = current_frame.high_pc().to_virt_addr();
         return run_until_address(return_address, tid);
     }
