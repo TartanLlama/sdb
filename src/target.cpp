@@ -252,6 +252,7 @@ sdb::target::create_line_breakpoint(
 std::string sdb::target::function_name_at_address(virt_addr address) const {
     auto file_address = address.to_file_addr(elves_);
     auto obj = file_address.elf_file();
+    if (!obj) return "";
     auto func = obj->get_dwarf().function_containing_address(file_address);
     auto elf_filename = obj->path().filename().string();
     std::string func_name = "";
