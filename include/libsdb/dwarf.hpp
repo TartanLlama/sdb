@@ -137,6 +137,7 @@ namespace sdb {
 		span<const std::byte> expr_data_;
 	};
 
+	class type;
 	class attr {
 	public:
 		attr(const compile_unit* cu, std::uint64_t type,
@@ -157,6 +158,7 @@ namespace sdb {
 		location_list as_location_list() const;
 		dwarf_expression::result as_evaluated_location(
 			const sdb::process& proc, const registers& regs) const;
+		type as_type() const;
 
 	private:
 		const compile_unit* cu_;
@@ -342,6 +344,14 @@ namespace sdb {
 		const line_table::file& file() const;
 		std::uint64_t line() const;
 
+		struct bitfield_information {
+			std::uint64_t bit_size;
+			std::uint64_t storage_byte_size;
+			std::uint8_t bit_offset;
+		};
+		std::optional<bitfield_information> get_bitfield_information(
+			std::uint64_t class_byte_size) const;
+
 	private:
 		const std::byte* pos_ = nullptr;
 		const compile_unit* cu_ = nullptr;
@@ -471,6 +481,9 @@ namespace sdb {
 
 		std::vector<die> inline_stack_at_address(file_addr address) const;
 		const call_frame_information& cfi() const { return *cfi_; }
+
+		std::optional<die> find_local_variable(std::string name, file_addr pc) const;
+		std::vector<die> scopes_at_address(file_addr address) const;
 
 	private:
 		void index() const;

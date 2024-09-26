@@ -22,6 +22,8 @@
 #include <fstream>
 #include <filesystem>
 #include <cmath>
+#include <libsdb/type.hpp>
+#include <unordered_set>
 
 namespace {
 	sdb::process* g_sdb_process = nullptr;
@@ -938,22 +940,98 @@ namespace {
 		}
 	}
 
+	void handle_variable_locals_command(sdb::target& target) {
+		auto pc = target.get_pc_file_address();
+		auto scopes = pc.elf_file()->get_dwarf().scopes_at_address(pc);
+		std::unordered_set<std::string> seen;
+		for (auto& scope : scopes) {
+			for (auto& var : scope.children()) {
+				std::string name(var.name().value_or(""));
+				auto tag = var.abbrev_entry()->tag;
+				if (tag == DW_TAG_variable or tag == DW_TAG_formal_parameter and
+					!name.empty() and !seen.count(name)) {
+					auto loc = var[DW_AT_location].as_evaluated_location(
+						target.get_process(), target.get_stack().current_frame().regs);
+					auto type = var[DW_AT_type].as_type();
+					auto value = target.read_location_data(loc, type.byte_size());
+					auto str = sdb::typed_data{ std::move(value), type }
+					.visualize(target.get_process());
+					fmt::print("{}: {}\n", name, str);
+					seen.insert(name);
+				}
+			}
+		}
+	}
+
+	void handle_variable_read_command(
+		sdb::target& target, const std::vector<std::string>& args) {
+		auto name = args[2];
+		auto pc = target.get_pc_file_address();
+		auto data = target.resolve_indirect_name(name, pc);
+		auto str = data.visualize(target.get_process());
+		fmt::print("Value: {}\n", str);
+	}
+
+	void handle_variable_location_command(
+		sdb::target& target, const std::vector<std::string>& args) {
+		auto name = args[2];
+		auto pc = target.get_pc_file_address();
+		auto var = target.find_variable(name, pc);
+		if (!var) {
+			std::cerr << "Variable not found\n";
+			return;
+		}
+
+		auto loc = var.value()[DW_AT_location].as_evaluated_location(
+			target.get_process(), target.get_stack().current_frame().regs);
+
+		auto print_simple_location = [](auto* loc) {
+			if (auto reg_loc = std::get_if<sdb::dwarf_expression::register_result>(loc)) {
+				auto name = sdb::register_info_by_dwarf(reg_loc->reg_num).name;
+				fmt::print("Register: {}\n", name);
+			}
+			else if (auto addr_res = std::get_if<sdb::dwarf_expression::address_result>(loc)) {
+				fmt::print("Address: {:#x}\n", addr_res->address.addr());
+			}
+			else {
+				fmt::print("None");
+			}
+		};
+
+		if (auto simple_loc = std::get_if<sdb::dwarf_expression::simple_location>(&loc)) {
+			print_simple_location(simple_loc);
+		}
+		else if (auto pieces_res = std::get_if<sdb::dwarf_expression::pieces_result>(&loc)) {
+			for (auto& piece : pieces_res->pieces) {
+				fmt::print("Piece: offset = {}, bit size = {}, location = ",
+					piece.offset, piece.bit_size);
+				print_simple_location(&piece.location);
+			}
+		}
+	}
+
 	void handle_variable_command(
 		sdb::target& target, const std::vector<std::string>& args) {
+		if (args.size() < 2) {
+			print_help({ "help", "variable" });
+			return;
+		}
+
+		if (is_prefix(args[1], "locals")) {
+			handle_variable_locals_command(target);
+			return;
+		}
+
 		if (args.size() < 3) {
 			print_help({ "help", "variable" });
 			return;
 		}
 
 		if (is_prefix(args[1], "read")) {
-			auto die = target.get_main_elf().get_dwarf().find_global_variable(args[2]);
-			auto loc = die.value()[DW_AT_location].as_evaluated_location(
-				target.get_process(), target.get_stack().current_frame().regs);
-			auto value = target.read_location_data(loc, 8);
-			std::uint64_t res = 0;
-			std::copy(value.begin(), value.end(),
-				reinterpret_cast<std::byte*>(&res));
-			std::cout << "Value: " << res << '\n';
+			handle_variable_read_command(target, args);
+		}
+		else if (is_prefix(args[1], "location")) {
+			handle_variable_location_command(target, args);
 		}
 	}
 

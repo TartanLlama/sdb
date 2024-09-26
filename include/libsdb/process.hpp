@@ -164,6 +164,8 @@ namespace sdb {
 			return from_bytes<T>(data.data());
 		}
 
+		std::string read_string(virt_addr address) const;
+
 		int set_hardware_breakpoint(
 			breakpoint_site::id_type id, virt_addr address);
 		void clear_hardware_stoppoint(int index);
