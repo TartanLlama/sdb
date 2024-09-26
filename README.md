@@ -20,8 +20,8 @@ This repository contains the source code for the book [Building a Debugger](http
 - Chapter 16: [Stack Unwinding](https://github.com/TartanLlama/sdb/tree/chapter-16)
 - Chapter 17: [Shared Libraries](https://github.com/TartanLlama/sdb/tree/chapter-17)
 - Chapter 18: [Multithreading](https://github.com/TartanLlama/sdb/tree/chapter-18)
-- Chapter 19: DWARF Expressions
-- Chapter 20: Variables and Types
+- Chapter 19: [DWARF Expressions](https://github.com/TartanLlama/sdb/tree/chapter-19)
+- Chapter 20: [Variables and Types](https://github.com/TartanLlama/sdb/tree/chapter-20)
 - Chapter 21: Expression Evaluation
 
-Chapters 19 and up are still undergoing technical review.
+Chapter 21 is still undergoing technical review.
