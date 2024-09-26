@@ -273,6 +273,7 @@ namespace {
     stepi       - Single instruction step
 	thread      - Commands for operating on threads
     up          - Select the stack frame above the current one
+    variable    - Commands for operating on variables
     watchpoint  - Commands for operating on watchpoints
 )";
 		}
@@ -330,6 +331,11 @@ namespace {
     select <thread ID>
 )";
         }
+		else if (is_prefix(args[1], "variable")) {
+			std::cerr << R"(Available commands:
+    read <variable>
+)";
+		}
 		else {
 			std::cerr << "No help available on that\n";
 		}
@@ -932,6 +938,25 @@ namespace {
 		}
 	}
 
+	void handle_variable_command(
+		sdb::target& target, const std::vector<std::string>& args) {
+		if (args.size() < 3) {
+			print_help({ "help", "variable" });
+			return;
+		}
+
+		if (is_prefix(args[1], "read")) {
+			auto die = target.get_main_elf().get_dwarf().find_global_variable(args[2]);
+			auto loc = die.value()[DW_AT_location].as_evaluated_location(
+				target.get_process(), target.get_stack().current_frame().regs);
+			auto value = target.read_location_data(loc, 8);
+			std::uint64_t res = 0;
+			std::copy(value.begin(), value.end(),
+				reinterpret_cast<std::byte*>(&res));
+			std::cout << "Value: " << res << '\n';
+		}
+	}
+
 	void handle_command(std::unique_ptr<sdb::target>& target,
 		std::string_view line) {
 		auto args = split(line, ' ');
@@ -995,14 +1020,15 @@ namespace {
 		else if (is_prefix(command, "backtrace")) {
 			print_backtrace(*target);
 		}
+		else if (is_prefix(command, "variable")) {
+			handle_variable_command(*target, args);
+		}
 		else if (is_prefix(command, "help")) {
 			print_help(args);
 		}
 		else {
 			std::cerr << "Unknown command\n";
 		}
-
-
 	}
 
 	void main_loop(std::unique_ptr<sdb::target>& target) {

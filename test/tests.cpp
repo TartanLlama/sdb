@@ -764,3 +764,60 @@ TEST_CASE("Multi-threading works", "[threads]") {
     REQUIRE(reason.reason == sdb::process_state::exited);
     close(dev_null);
 }
+
+TEST_CASE("Can read global integer variable", "[variable]") {
+    auto target = target::launch("targets/global_variable");
+    auto& proc = target->get_process();
+
+    target->create_function_breakpoint("main").enable();
+    proc.resume();
+    proc.wait_on_signal();
+
+    auto var_die = target->get_main_elf().get_dwarf().find_global_variable("g_int");
+    auto var_loc = var_die.value()[DW_AT_location]
+        .as_evaluated_location(proc, proc.get_registers());
+    auto res = target->read_location_data(var_loc, 8);
+    auto val = from_bytes<std::uint64_t>(res.data());
+
+    REQUIRE(val == 0);
+
+    target->step_over();
+    res = target->read_location_data(var_loc, 8);
+    val = from_bytes<std::uint64_t>(res.data());
+
+    REQUIRE(val == 1);
+
+    target->step_over();
+    res = target->read_location_data(var_loc, 8);
+    val = from_bytes<std::uint64_t>(res.data());
+
+    REQUIRE(val == 42);
+}
+
+TEST_CASE("DWARF expressions work", "[dwarf]") {
+    std::vector<std::uint8_t> piece_data = {
+        DW_OP_reg16, DW_OP_piece, 4, DW_OP_piece, 8, DW_OP_const4u,
+        0xff, 0xff, 0xff, 0xff, DW_OP_bit_piece, 5, 12
+    };
+
+    auto target = target::launch("targets/step");
+    auto& proc = target->get_process();
+
+    sdb::span<const std::byte> data{
+        reinterpret_cast<std::byte*>(piece_data.data()), piece_data.size() };
+    auto expr = sdb::dwarf_expression(target->get_main_elf().get_dwarf(), data);
+    auto res = expr.eval(proc, proc.get_registers());
+
+    auto& pieces = std::get<sdb::dwarf_expression::pieces_result>(res).pieces;
+    REQUIRE(pieces.size() == 3);
+    REQUIRE(pieces[0].bit_size == 4 * 8);
+    REQUIRE(pieces[1].bit_size == 8 * 8);
+    REQUIRE(pieces[2].bit_size == 5);
+    REQUIRE(std::get<dwarf_expression::register_result>(pieces[0].location).reg_num == 16);
+    REQUIRE(std::get_if<dwarf_expression::empty_result>(&pieces[1].location) != nullptr);
+    REQUIRE(std::get<dwarf_expression::address_result>(pieces[2].location)
+        .address.addr() == 0xffffffff);
+    REQUIRE(pieces[0].offset == 0);
+    REQUIRE(pieces[1].offset == 0);
+    REQUIRE(pieces[2].offset == 12);
+}

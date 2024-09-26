@@ -90,6 +90,10 @@ namespace sdb {
         }
 
         void notify_thread_lifecycle_event(const sdb::stop_reason& reason);
+
+        std::vector<std::byte> read_location_data(
+            const dwarf_expression::result& loc, std::size_t size,
+            std::optional<pid_t> otid = std::nullopt) const;
     private:
         target(std::unique_ptr<process> proc, std::unique_ptr<elf> obj)
             : process_(std::move(proc))
