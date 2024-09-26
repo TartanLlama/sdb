@@ -444,4 +444,5 @@ std::vector<std::byte> sdb::target::read_location_data(
 
         return data;
     }
+    sdb::error::send("Invalid location type");
 }

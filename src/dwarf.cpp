@@ -1267,12 +1267,14 @@ namespace {
                 break;
             case DW_CFA_def_cfa:
                 ctx.cfa_rule = cfa_register_rule{
-                  cur.uleb128(), cur.uleb128()
+                  static_cast<std::uint32_t>(cur.uleb128()), 
+                  static_cast<std::uint32_t>(cur.uleb128())
                 };
                 break;
             case DW_CFA_def_cfa_sf:
                 ctx.cfa_rule = cfa_register_rule{
-                    cur.uleb128(), cur.sleb128() * cie.data_alignment_factor
+                    static_cast<std::uint32_t>(cur.uleb128()), 
+                    cur.sleb128() * cie.data_alignment_factor
                 };
                 break;
             case DW_CFA_def_cfa_register:
@@ -1541,7 +1543,9 @@ sdb::dwarf_expression::eval(
             stack.push_back(std::get<std::uint64_t>(reg_val) + offset);
         }
         else if (opcode >= DW_OP_reg0 and opcode <= DW_OP_reg31) {
-            most_recent_location = register_result{ opcode - DW_OP_reg0 };
+            most_recent_location = register_result{ 
+                static_cast<std::uint64_t>(opcode - DW_OP_reg0) 
+            };
         }
 
         switch (opcode) {
