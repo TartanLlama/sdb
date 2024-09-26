@@ -209,7 +209,7 @@ namespace sdb {
 		void stop_running_threads();
 		void resume_all_threads();
 
-		void cleanup_exited_threads(pid_t main_stop_tid);
+		std::optional<sdb::stop_reason> cleanup_exited_threads(pid_t main_stop_tid);
 		void report_thread_lifecycle_event(const stop_reason& reason);
 
 		std::optional<stop_reason> handle_signal(

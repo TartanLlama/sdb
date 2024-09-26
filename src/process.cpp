@@ -208,11 +208,11 @@ sdb::stop_reason sdb::process::wait_on_signal(pid_t to_await) {
             return reason;
         }
         else {
-            return wait_on_signal(to_await);
+            return wait_on_signal(-1);
         }
     }
     stop_running_threads();
-    cleanup_exited_threads(tid);
+    reason = cleanup_exited_threads(tid).value_or(reason);
 
     state_ = reason.reason;
     current_thread_ = tid;
@@ -619,27 +619,32 @@ void sdb::process::stop_running_threads() {
                 thread.pending_sigstop = true;
             }
 
-            thread_reason = *handle_signal(thread_reason, false);
+            thread_reason = handle_signal(thread_reason, false).value_or(thread_reason);
             threads_.at(tid).reason = thread_reason;
             threads_.at(tid).state = thread_reason.reason;
         }
     }
 }
 
-void sdb::process::cleanup_exited_threads(pid_t main_stop_tid) {
+std::optional<sdb::stop_reason> sdb::process::cleanup_exited_threads(pid_t main_stop_tid) {
     std::vector<pid_t> to_remove;
+    std::optional<stop_reason> to_report;
     for (auto& [tid, thread] : threads_) {
         if (tid != main_stop_tid and
             (thread.state == process_state::exited or
                 thread.state == process_state::terminated)) {
             report_thread_lifecycle_event(thread.reason);
             to_remove.push_back(tid);
+            if (tid == pid_) {
+                to_report = thread.reason;
+            }
         }
     }
 
     for (auto tid : to_remove) {
         threads_.erase(tid);
     }
+    return to_report;
 }
 
 void sdb::process::report_thread_lifecycle_event(
