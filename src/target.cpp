@@ -80,7 +80,7 @@ sdb::stop_reason sdb::target::step_in(std::optional<pid_t> otid) {
     auto& thread = threads_.at(tid);
     if (stack.inline_height() > 0) {
         stack.simulate_inlined_step_in();
-        stop_reason reason (tid, process_state::stopped, SIGTRAP, trap_type::single_step);
+        stop_reason reason(tid, process_state::stopped, SIGTRAP, trap_type::single_step);
         thread.state->reason = reason;
         return reason;
     }
@@ -205,8 +205,8 @@ sdb::stop_reason sdb::target::step_out(std::optional<pid_t> otid) {
         return run_until_address(return_address, tid);
     }
 
-	auto& regs = stack.frames()[stack.current_frame_index() + 1].regs;
-	virt_addr return_address{ regs.read_by_id_as<std::uint64_t>(register_id::rip) };
+    auto& regs = stack.frames()[stack.current_frame_index() + 1].regs;
+    virt_addr return_address{ regs.read_by_id_as<std::uint64_t>(register_id::rip) };
 
     sdb::stop_reason reason;
     for (auto frames = stack.frames().size();
@@ -461,13 +461,20 @@ std::optional<sdb::die> sdb::target::find_variable(
         if (found) {
             global = *found;
         }
-    });
+        });
     return global;
 }
 
 namespace {
     sdb::typed_data get_initial_variable_data(
         const sdb::target& target, std::string name, sdb::file_addr pc) {
+        if (name[0] == '$') {
+            auto index = std::strtoull(name.data() + 1, nullptr, 10);
+            if (errno != 0 and index == 0) {
+                sdb::error::send("Invalid expression result index");
+            }
+            return target.get_expression_result(index);
+        }
         auto var = target.find_variable(name, pc);
         if (!var) {
             sdb::error::send("Variable not found");
@@ -486,11 +493,359 @@ namespace {
         }
         return { std::move(data_vec), var_type, address };
     }
+
+    sdb::typed_data parse_argument(
+        sdb::target& target, pid_t tid, std::string_view arg) {
+        if (arg.empty()) {
+            sdb::error::send("Empty argument");
+        }
+        if (arg.size() > 2 and arg[0] == '"' and arg[arg.size() - 1] == '"') {
+            auto ptr = target.inferior_malloc(arg.size() - 1);
+            std::string arg_str{ arg.substr(1, arg.size() - 2) };
+            auto data_ptr = reinterpret_cast<const std::byte*>(arg_str.data());
+            sdb::span<const std::byte> data = {
+                data_ptr, arg_str.size() + 1 };
+            target.get_process().write_memory(ptr, data);
+            return { sdb::to_byte_vec(ptr), sdb::builtin_type::string };
+        }
+        else if (arg == "true" or arg == "false") {
+            auto value = arg == "true";
+            return { sdb::to_byte_vec(value), sdb::builtin_type::boolean };
+        }
+        else if (arg[0] == '\'') {
+            if (arg.size() != 3 or arg[2] != '\'') {
+                sdb::error::send("Invalid character literal");
+            }
+            return { sdb::to_byte_vec(arg[1]), sdb::builtin_type::character };
+        }
+        else if (arg[0] == '-' or std::isdigit(arg[0])) {
+            if (arg.find(".") != std::string::npos) {
+                char* end;
+                auto value = std::strtod(arg.data(), &end);
+                if (end == arg.data() or errno != 0 and value == 0) {
+                    sdb::error::send("Invalid floating point literal");
+                }
+                return { sdb::to_byte_vec(value), sdb::builtin_type::floating_point };
+            }
+            else {
+                char* end;
+                auto value = std::strtoll(arg.data(), &end, 10);
+                if (end == arg.data() or errno != 0 and value == 0) {
+                    sdb::error::send("Invalid integer literal");
+                }
+                return { sdb::to_byte_vec(value), sdb::builtin_type::integer };
+            }
+        }
+        else {
+            auto pc = target.get_pc_file_address(tid);
+            auto res = target.resolve_indirect_name(std::string(arg), pc);
+            if (!res.funcs.empty()) {
+                sdb::error::send("Nested function calls not supported");
+            }
+            return *res.variable;
+        }
+    }
+
+    std::vector<sdb::typed_data> collect_arguments(
+        sdb::target& target, pid_t tid, std::string_view arg_string,
+        const std::vector<sdb::die>& funcs,
+        std::optional<sdb::typed_data> object) {
+        std::vector<sdb::typed_data> args;
+        auto& proc = target.get_process();
+
+        if (object) {
+            std::vector<std::byte> data;
+            if (object->address()) {
+                data = sdb::to_byte_vec(*object->address());
+            }
+            else {
+                auto& regs = proc.get_registers(tid);
+                auto rsp = regs.read_by_id_as<std::uint64_t>(sdb::register_id::rsp);
+                rsp -= object->value_type().byte_size();
+                proc.write_memory(sdb::virt_addr{ rsp }, object->data());
+                regs.write_by_id(sdb::register_id::rsp, rsp, true);
+                data = sdb::to_byte_vec(rsp);
+            }
+            auto obj_ptr_die = funcs[0][DW_AT_object_pointer].as_reference();
+            auto this_type = obj_ptr_die[DW_AT_type].as_type();
+            args.push_back({ std::move(data), this_type });
+        }
+
+        auto args_start = 1;
+        auto args_end = arg_string.find(')');
+
+        while (args_start < args_end) {
+            auto comma_pos = arg_string.find(',', args_start);
+            if (comma_pos == std::string::npos) {
+                comma_pos = args_end;
+            }
+            auto arg_expr = arg_string.substr(args_start, comma_pos - args_start);
+            args.push_back(parse_argument(target, tid, arg_expr));
+            args_start = comma_pos + 1;
+        }
+        return args;
+    }
+
+    sdb::die resolve_overload(
+        const std::vector<sdb::die>& funcs,
+        const std::vector<sdb::typed_data>& args) {
+        std::optional<sdb::die> matching_func;
+        for (auto& func : funcs) {
+            bool matches = true;
+            auto arg_it = args.begin();
+            auto params = func.parameter_types();
+
+            if (args.size() == params.size()) {
+                for (auto param_it = params.begin();
+                    arg_it != args.end();
+                    ++param_it, ++arg_it) {
+                    if (*param_it != arg_it->value_type()) {
+                        matches = false;
+                        break;
+                    }
+                }
+            }
+            else {
+                matches = false;
+            }
+
+            if (matches) {
+                if (matching_func) sdb::error::send("Ambiguous function call");
+                matching_func = func;
+            }
+        }
+        if (!matching_func) sdb::error::send("No matching function");
+        return *matching_func;
+    }
+
+
+
+    void setup_arguments(
+        sdb::target& target, sdb::die func,
+        std::vector<sdb::typed_data> args,
+        sdb::registers& regs,
+        std::optional<sdb::virt_addr> return_slot) {
+        std::array<sdb::register_id, 6> int_regs = {
+            sdb::register_id::rdi,
+            sdb::register_id::rsi,
+            sdb::register_id::rdx,
+            sdb::register_id::rcx,
+            sdb::register_id::r8,
+            sdb::register_id::r9
+        };
+
+        std::array<sdb::register_id, 8> sse_regs = {
+            sdb::register_id::xmm0,
+            sdb::register_id::xmm1,
+            sdb::register_id::xmm2,
+            sdb::register_id::xmm3,
+            sdb::register_id::xmm4,
+            sdb::register_id::xmm5,
+            sdb::register_id::xmm6,
+            sdb::register_id::xmm7
+        };
+
+        auto current_int_reg = 0;
+        auto current_sse_reg = 0;
+        struct stack_arg {
+            sdb::typed_data data;
+            std::size_t size;
+        };
+        auto stack_args = std::vector<stack_arg>{};
+        auto rsp = regs.read_by_id_as<std::uint64_t>(sdb::register_id::rsp);
+
+        auto round_up_to_eightbyte = [](std::size_t size) {
+            return (size + 7) & ~7;
+            };
+
+        if (func.contains(DW_AT_type)) {
+            auto ret_type = func[DW_AT_type].as_type();
+            auto ret_class = ret_type.get_parameter_classes()[0];
+            if (ret_class == sdb::parameter_class::memory) {
+                current_int_reg++;
+                regs.write_by_id(int_regs[0], return_slot->addr(), true);
+            }
+        }
+
+        auto params = func.parameter_types();
+        for (auto i = 0; i < params.size(); ++i) {
+            auto& param = params[i];
+            auto param_classes = param.get_parameter_classes();
+
+            if (param.is_reference_type()) {
+                if (args[i].address()) {
+                    args[i] = sdb::typed_data{
+                        sdb::to_byte_vec(*args[i].address()),
+                        sdb::builtin_type::integer };
+                }
+                else {
+                    rsp -= args[i].value_type().byte_size();
+                    target.get_process().write_memory(
+                        sdb::virt_addr{ rsp }, args[i].data());
+                    args[i] = sdb::typed_data{
+                        sdb::to_byte_vec(rsp),
+                        sdb::builtin_type::integer };
+                }
+            }
+        }
+
+        for (auto i = 0; i < params.size(); ++i) {
+            auto& arg = args[i];
+            auto& param = params[i];
+            auto param_classes = params[i].get_parameter_classes();
+            auto param_size = param.byte_size();
+
+            auto required_int_regs = std::count(
+                param_classes.begin(), param_classes.end(),
+                sdb::parameter_class::integer);
+            auto required_sse_regs = std::count(
+                param_classes.begin(), param_classes.end(),
+                sdb::parameter_class::sse);
+
+            if (current_int_reg + required_int_regs > int_regs.size() or
+                current_sse_reg + required_sse_regs > sse_regs.size() or
+                (required_int_regs == 0 and required_sse_regs == 0)) {
+                auto size = round_up_to_eightbyte(param_size);
+                stack_args.push_back({ args[i], size });
+            }
+            else {
+                for (auto i = 0; i < param_size; i += 8) {
+                    sdb::register_id reg;
+                    switch (param_classes[i / 8]) {
+                    case sdb::parameter_class::integer:
+                        reg = int_regs[current_int_reg++];
+                        break;
+                    case sdb::parameter_class::sse:
+                        reg = sse_regs[current_sse_reg++];
+                        break;
+                    case sdb::parameter_class::no_class:
+                        break;
+                    default:
+                        sdb::error::send("Unsupported parameter class");
+                    }
+
+                    sdb::byte64 data;
+                    std::copy(
+                        arg.data().begin() + i,
+                        arg.data().begin() + i + 8,
+                        data.begin());
+                    regs.write_by_id(reg, data, true);
+                }
+            }
+        }
+        for (auto& [_, size] : stack_args) {
+            rsp -= size;
+        }
+        rsp &= ~0xf;
+
+        auto start_pos = rsp;
+        for (auto& [arg, size] : stack_args) {
+            target.get_process().write_memory(
+                sdb::virt_addr{ start_pos }, arg.data());
+            start_pos += size;
+        }
+        regs.write_by_id(sdb::register_id::rax, current_sse_reg, true);
+        regs.write_by_id(sdb::register_id::rsp, rsp, true);
+    }
+
+    sdb::typed_data read_return_value(
+        sdb::target& target, sdb::die func,
+        sdb::virt_addr return_slot, sdb::registers& regs) {
+        auto ret_type = func[DW_AT_type].as_type();
+        auto ret_classes = ret_type.get_parameter_classes();
+
+        bool used_int = false;
+        bool used_sse = false;
+
+        if (ret_classes[0] == sdb::parameter_class::memory) {
+            auto value = target.get_process().read_memory(
+                return_slot, ret_type.byte_size());
+            return { sdb::typed_data{
+                std::move(value), func[DW_AT_type].as_type(), return_slot } };
+        }
+
+        if (ret_classes[0] == sdb::parameter_class::x87) {
+            auto data = regs.read_by_id_as<long double>(sdb::register_id::st0);
+            auto value = sdb::to_byte_vec(data);
+            target.get_process().write_memory(return_slot, value);
+            return { sdb::typed_data{
+                std::move(value), func[DW_AT_type].as_type(), return_slot } };
+        }
+
+        std::vector<std::byte> value;
+        for (auto ret_class : ret_classes) {
+            if (ret_class == sdb::parameter_class::integer) {
+                auto reg = used_int ? sdb::register_id::rdx : sdb::register_id::rax;
+                used_int = true;
+                auto data = regs.read_by_id_as<std::uint64_t>(reg);
+                auto new_value = sdb::to_byte_vec(data);
+                value.insert(value.end(), new_value.begin(), new_value.end());
+            }
+            else if (ret_class == sdb::parameter_class::sse) {
+                auto reg = used_sse ? sdb::register_id::xmm1 : sdb::register_id::xmm0;
+                used_sse = true;
+                auto data = regs.read_by_id_as<sdb::byte128>(reg);
+                value = { data.begin(), data.end() };
+                target.get_process().write_memory(return_slot, value);
+            }
+            else if (ret_class != sdb::parameter_class::no_class) {
+                sdb::error::send("Unsupported return type");
+            }
+        }
+
+        target.get_process().write_memory(return_slot, value);
+        return { sdb::typed_data{
+            std::move(value), func[DW_AT_type].as_type(), return_slot } };
+    }
+
+
+    std::optional<sdb::typed_data> inferior_call_from_dwarf(
+        sdb::target& target, sdb::die func,
+        const std::vector<sdb::typed_data>& args,
+        sdb::virt_addr return_addr, pid_t tid) {
+        auto& regs = target.get_process().get_registers(tid);
+        auto saved_regs = regs;
+
+        sdb::virt_addr call_addr;
+        if (func.contains(DW_AT_low_pc) or func.contains(DW_AT_ranges)) {
+            call_addr = func.low_pc().to_virt_addr();
+        }
+        else {
+            auto def = func.cu()->dwarf_info()->get_member_function_definition(func);
+            if (!def) {
+                sdb::error::send("No function definition found");
+            }
+            call_addr = def->low_pc().to_virt_addr();
+        }
+
+        std::optional<sdb::virt_addr> return_slot;
+        if (func.contains(DW_AT_type)) {
+            auto ret_type = func[DW_AT_type].as_type();
+            return_slot = target.inferior_malloc(ret_type.byte_size());
+        }
+
+        setup_arguments(target, func, args, regs, return_slot);
+        auto new_regs = target.get_process().inferior_call(
+            call_addr, return_addr, saved_regs, tid);
+
+        if (func.contains(DW_AT_type)) {
+            return read_return_value(
+                target, func, *return_slot, new_regs);
+        }
+        return std::nullopt;
+    }
 }
 
-sdb::typed_data sdb::target::resolve_indirect_name(
-    std::string name, sdb::file_addr pc) {
-    auto op_pos = name.find_first_of(".-[");
+sdb::target::resolve_indirect_name_result
+sdb::target::resolve_indirect_name(
+    std::string name, sdb::file_addr pc) const {
+    auto op_pos = name.find_first_of(".-[(");
+
+    if (name[op_pos] == '(') {
+        auto func_name = name.substr(0, op_pos);
+        auto funcs = find_functions(func_name);
+        return { std::nullopt, std::move(funcs.dwarf_functions) };
+    }
 
     auto var_name = name.substr(0, op_pos);
     auto& dwarf = pc.elf_file()->get_dwarf();
@@ -507,13 +862,27 @@ sdb::typed_data sdb::target::resolve_indirect_name(
         }
         if (name[op_pos] == '.' or name[op_pos] == '>') {
             auto member_name_start = op_pos + 1;
-            op_pos = name.find_first_of(".-[", member_name_start);
-            auto member_name = name.substr(
-                member_name_start, op_pos - member_name_start);
+            op_pos = name.find_first_of(".-[(,", member_name_start);
+            auto member_name = name.substr(member_name_start, op_pos - member_name_start);
+            if (name[op_pos] == '(') {
+                std::vector<die> funcs;
+                auto stripped_value_type = data.value_type().strip_cvref_typedef();
+                for (auto& child : stripped_value_type.get_die().children()) {
+                    if (child.abbrev_entry()->tag == DW_TAG_subprogram and
+                        child.contains(DW_AT_object_pointer) and
+                        child.name() == member_name) {
+                        funcs.push_back(child);
+                    }
+                }
+                if (funcs.empty()) {
+                    sdb::error::send("No such member function");
+                }
+                return { std::move(data), std::move(funcs) };
+            }
             data = data.read_member(get_process(), member_name);
             name = name.substr(member_name_start);
         }
-         else if (name[op_pos] == '[') {
+        else if (name[op_pos] == '[') {
             auto int_end = name.find(']', op_pos);
             auto index_str = name.substr(op_pos + 1, int_end - op_pos - 1);
             char* end;
@@ -524,8 +893,85 @@ sdb::typed_data sdb::target::resolve_indirect_name(
             data = data.index(get_process(), index);
             name = name.substr(int_end + 1);
         }
-        op_pos = name.find_first_of(".-[");
+        op_pos = name.find_first_of(".-[(");
     }
 
-    return data;
+    return { std::move(data), {} };
+}
+
+sdb::virt_addr sdb::target::inferior_malloc(std::size_t size) {
+    auto saved_regs = process_->get_registers();
+
+    auto malloc_funcs = find_functions("malloc").elf_functions;
+    auto malloc_func = std::find_if(
+        malloc_funcs.begin(), malloc_funcs.end(), [](auto& sym) {
+            return sym.second->st_value != 0;
+        });
+    if (malloc_func == malloc_funcs.end()) {
+        error::send("malloc not found");
+    }
+
+    file_addr malloc_addr{
+        *malloc_func->first, malloc_func->second->st_value };
+    auto call_addr = malloc_addr.to_virt_addr();
+
+    auto entry_point = virt_addr{ process_->get_auxv()[AT_ENTRY] };
+    breakpoints_.get_by_address(entry_point).install_hit_handler([&] {
+        return false;
+        });
+
+    process_->get_registers().write_by_id(register_id::rdi, size, true);
+
+    auto new_regs = process_->inferior_call(
+        call_addr, entry_point, saved_regs);
+    auto result = new_regs.read_by_id_as<std::uint64_t>(register_id::rax);
+
+    return virt_addr{ result };
+}
+
+std::optional<sdb::target::evaluate_expression_result>
+sdb::target::evaluate_expression(
+    std::string_view expr, std::optional<pid_t> otid) {
+    auto tid = otid.value_or(process_->current_thread());
+    auto pc = get_pc_file_address(tid);
+
+    auto paren_pos = expr.find('(');
+    if (paren_pos == std::string::npos) {
+        sdb::error::send("Invalid expression");
+    }
+
+    std::string name{ expr.substr(0, paren_pos + 1) };
+    auto [variable, funcs] = resolve_indirect_name(name, pc);
+    if (funcs.empty()) {
+        sdb::error::send("Invalid expression");
+    }
+
+    auto entry_point = virt_addr{ process_->get_auxv()[AT_ENTRY] };
+    breakpoints_.get_by_address(entry_point).install_hit_handler([&] {
+        return false;
+        });
+
+    auto arg_string = expr.substr(paren_pos);
+    auto args = collect_arguments(
+        *this, tid, arg_string, funcs, variable);
+    auto func = resolve_overload(funcs, args);
+    auto ret = inferior_call_from_dwarf(
+        *this, func, args, entry_point, tid);
+    if (ret) {
+        expression_results_.push_back(*ret);
+        return evaluate_expression_result{
+            std::move(*ret), expression_results_.size() - 1
+        };
+    }
+    return std::nullopt;
+}
+
+const sdb::typed_data& sdb::target::get_expression_result(
+    std::size_t i) const {
+    auto& res = expression_results_[i];
+    auto new_data = process_->read_memory(
+        *res.address(), res.value_type().byte_size());
+    res = typed_data{
+        std::move(new_data), res.value_type(), res.address() };
+    return res;
 }

@@ -5,14 +5,23 @@
 #include <optional>
 #include <libsdb/dwarf.hpp>
 #include <vector>
+#include <variant>
 
 namespace sdb {
+    enum class parameter_class {
+        integer, sse, sseup, x87, x87up, complex_x87,
+        memory, no_class
+    };
+
+    enum class builtin_type {
+        string, character, integer, boolean, floating_point
+    };
+
+    class process;
     class type {
     public:
         type(die die)
-            : die_(std::move(die)) {}
-
-        die get_die() const { return die_; }
+            : info_(std::move(die)) {}
 
         std::size_t byte_size() const;
 
@@ -50,11 +59,43 @@ namespace sdb {
                 DW_TAG_pointer_type>();
         }
 
+        type(builtin_type type)
+            : info_(type) {}
+
+        die get_die() const {
+            if (!std::holds_alternative<die>(info_)) {
+                sdb::error::send("Type is not from DWARF info");
+            }
+            return std::get<die>(info_);
+        }
+
+        builtin_type get_builtin_type() const {
+            if (!std::holds_alternative<builtin_type>(info_)) {
+                sdb::error::send("Type is not a builtin type");
+            }
+            return std::get<builtin_type>(info_);
+        }
+
+        bool is_from_dwarf() const { return std::holds_alternative<die>(info_); }
+
+        bool operator==(const type& rhs) const;
+        bool operator!=(const type& rhs) const {
+            return !(*this == rhs);
+        }
+
+        std::size_t alignment() const;
+        bool has_unaligned_fields() const;
+        bool is_non_trivial_for_calls() const;
+        std::array<parameter_class, 2> get_parameter_classes() const;
+
+        bool is_class_type() const;
+        bool is_reference_type() const;
+
     private:
         std::size_t compute_byte_size() const;
 
-        die die_;
         mutable std::optional<std::size_t> byte_size_;
+        std::variant<die, builtin_type> info_;
     };
 
     class process;
@@ -67,6 +108,7 @@ namespace sdb {
         const std::vector<std::byte>& data() const { return data_; }
         const std::byte* data_ptr() const { return data_.data(); }
         const type& value_type() const { return type_; }
+        std::optional<virt_addr> address() const { return address_; }
 
         typed_data fixup_bitfield(
             const sdb::process& proc, const sdb::die& member_die) const;

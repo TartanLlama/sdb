@@ -220,6 +220,11 @@ namespace sdb {
 			thread_lifecycle_callback_ = std::move(callback);
 		}
 
+		sdb::registers inferior_call(
+			sdb::virt_addr func_addr, sdb::virt_addr return_addr,
+			const sdb::registers& regs_to_restore,
+			std::optional<pid_t> otid = std::nullopt);
+
 	private:
 		process(pid_t pid, bool terminate_on_end, bool is_attached)
 			: pid_(pid)

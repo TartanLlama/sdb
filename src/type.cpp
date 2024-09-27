@@ -10,6 +10,17 @@ std::size_t sdb::type::byte_size() const {
 }
 
 std::size_t sdb::type::compute_byte_size() const {
+    if (!is_from_dwarf()) {
+        switch (get_builtin_type()) {
+        case builtin_type::boolean: return 1;
+        case builtin_type::character: return 1;
+        case builtin_type::integer: return 8;
+        case builtin_type::floating_point: return 8;
+        case builtin_type::string: return 8;
+        }
+    }
+
+    auto& die_ = std::get<sdb::die>(info_);
     auto tag = die_.abbrev_entry()->tag;
 
     if (tag == DW_TAG_pointer_type) {
@@ -287,4 +298,367 @@ sdb::typed_data sdb::typed_data::index(
         }
         return { std::move(data_vec), value_type };
     }
+}
+
+bool sdb::type::operator==(const type& rhs) const {
+    if (!is_from_dwarf() and !rhs.is_from_dwarf()) {
+        return get_builtin_type() == rhs.get_builtin_type();
+    }
+    const sdb::type* from_dwarf = nullptr;
+    const sdb::type* builtin = nullptr;
+    if (!is_from_dwarf()) {
+        from_dwarf = &rhs;
+        builtin = this;
+    }
+    else if (!rhs.is_from_dwarf()) {
+        from_dwarf = this;
+        builtin = &rhs;
+    }
+    if (from_dwarf and builtin) {
+        auto die = from_dwarf->strip_cvref_typedef().get_die();
+        auto tag = die.abbrev_entry()->tag;
+        if (tag == DW_TAG_base_type) {
+            switch (die[DW_AT_encoding].as_int()) {
+            case DW_ATE_boolean:
+                return builtin->get_builtin_type() == builtin_type::boolean;
+            case DW_ATE_float:
+                return builtin->get_builtin_type() == builtin_type::floating_point;
+            case DW_ATE_signed:
+            case DW_ATE_unsigned:
+                return builtin->get_builtin_type() == builtin_type::integer;
+            case DW_ATE_signed_char:
+            case DW_ATE_unsigned_char:
+                return builtin->get_builtin_type() == builtin_type::character;
+            default:
+                return false;
+            }
+        }
+        if (tag == DW_TAG_pointer_type) {
+            return die[DW_AT_type].as_type().is_char_type() and
+                builtin->get_builtin_type() == builtin_type::string;
+        }
+        return false;
+    }
+    auto lhs_stripped = strip_all();
+    auto rhs_stripped = rhs.strip_all();
+
+    auto lhs_name = lhs_stripped.get_die().name();
+    auto rhs_name = rhs_stripped.get_die().name();
+    if (lhs_name and rhs_name and *lhs_name == *rhs_name)
+        return true;
+
+    return false;
+}
+
+namespace {
+    sdb::parameter_class merge_parameter_classes(
+        sdb::parameter_class lhs, sdb::parameter_class rhs) {
+        using namespace sdb;
+        if (lhs == rhs) return lhs;
+
+        if (lhs == parameter_class::no_class) return rhs;
+        if (rhs == parameter_class::no_class) return lhs;
+
+        if (lhs == parameter_class::memory or
+            rhs == parameter_class::memory) {
+            return parameter_class::memory;
+        }
+
+        if (lhs == parameter_class::integer or
+            rhs == parameter_class::integer) {
+            return parameter_class::integer;
+        }
+
+        if (lhs == parameter_class::x87 or
+            rhs == parameter_class::x87 or
+            lhs == parameter_class::x87up or
+            rhs == parameter_class::x87up or
+            lhs == parameter_class::complex_x87 or
+            rhs == parameter_class::complex_x87) {
+            return parameter_class::memory;
+        }
+
+        return parameter_class::sse;
+    }
+
+    void classify_class_field(
+        const sdb::type& type,
+        const sdb::die& field,
+        std::array<sdb::parameter_class, 2>& classes,
+        int bit_offset) {
+        auto bitfield_info = field.get_bitfield_information(type.byte_size());
+        auto field_type = field[DW_AT_type].as_type();
+
+        auto bit_size = bitfield_info ?
+            bitfield_info->bit_size :
+            field_type.byte_size() * 8;
+        auto current_bit_offset = bitfield_info ?
+            bitfield_info->bit_offset + bit_offset :
+            field[DW_AT_data_member_location].as_int() * 8 + bit_offset;
+        auto eightbyte_index = current_bit_offset / 64;
+
+        if (field_type.is_class_type()) {
+            for (auto child : field_type.get_die().children()) {
+                if (child.abbrev_entry()->tag == DW_TAG_member and
+                    child.contains(DW_AT_data_member_location) or
+                    child.contains(DW_AT_data_bit_offset)) {
+                    classify_class_field(type, child, classes, current_bit_offset);
+                }
+            }
+        }
+        else {
+            auto field_classes = field_type.get_parameter_classes();
+            classes[eightbyte_index] = merge_parameter_classes(
+                classes[eightbyte_index], field_classes[0]);
+            if (eightbyte_index == 0) {
+                classes[1] = merge_parameter_classes(classes[1], field_classes[1]);
+            }
+        }
+    }
+
+    std::array<sdb::parameter_class, 2> classify_class_type(
+        const sdb::type& type) {
+        if (type.is_non_trivial_for_calls()) {
+            sdb::error::send("NTFPOC types are not supported");
+        }
+
+        if (type.byte_size() > 16 or
+            type.has_unaligned_fields()) {
+            return {
+                sdb::parameter_class::memory,
+                sdb::parameter_class::memory
+            };
+        }
+
+        std::array<sdb::parameter_class, 2> classes = {
+            sdb::parameter_class::no_class,
+            sdb::parameter_class::no_class
+        };
+
+        if (type.get_die().abbrev_entry()->tag == DW_TAG_array_type) {
+            auto value_type = type.get_die()[DW_AT_type].as_type();
+            classes = value_type.get_parameter_classes();
+            if (type.byte_size() > 8 and classes[1] == sdb::parameter_class::no_class) {
+                classes[1] = classes[0];
+            }
+        }
+        else {
+            for (auto child : type.get_die().children()) {
+                if (child.abbrev_entry()->tag == DW_TAG_member and
+                    child.contains(DW_AT_data_member_location) or
+                    child.contains(DW_AT_data_bit_offset)) {
+                    classify_class_field(type, child, classes, 0);
+                }
+            }
+        }
+
+        if (classes[0] == sdb::parameter_class::memory or
+            classes[1] == sdb::parameter_class::memory) {
+            classes[0] = classes[1] = sdb::parameter_class::memory;
+        }
+        else if (classes[1] == sdb::parameter_class::x87up and
+            classes[0] != sdb::parameter_class::x87) {
+            classes[0] = classes[1] = sdb::parameter_class::memory;
+        }
+
+        return classes;
+    }
+
+    bool is_destructor(const sdb::die& func) {
+        auto name = func.name();
+        return name and
+            name.value().size() > 1 and
+            name.value()[0] == '~';
+    }
+
+    bool is_copy_or_move_constructor(
+        const sdb::type& class_type, const sdb::die& func) {
+        auto class_name = class_type.get_die().name();
+        if (class_name != func.name()) return false;
+
+        int i = 0;
+        for (auto child : func.children()) {
+            if (child.abbrev_entry()->tag == DW_TAG_formal_parameter) {
+                if (i == 0) {
+                    auto type = child[DW_AT_type].as_type();
+                    if (type.get_die().abbrev_entry()->tag != DW_TAG_pointer_type)
+                        return false;
+                    if (type.get_die()[DW_AT_type].as_type().strip_cv_typedef() != class_type)
+                        return false;
+                }
+                else if (i == 1) {
+                    auto type = child[DW_AT_type].as_type();
+                    auto tag = type.get_die().abbrev_entry()->tag;
+                    if (tag != DW_TAG_reference_type and
+                        tag != DW_TAG_rvalue_reference_type)
+                        return false;
+                    auto ref = type.get_die()[DW_AT_type].as_type().strip_cv_typedef();
+                    if (ref != class_type)
+                        return false;
+                }
+                else {
+                    return false;
+                }
+            }
+            ++i;
+        }
+        return i == 2;
+    }
+}
+
+std::size_t sdb::type::alignment() const {
+    if (!is_from_dwarf()) {
+        return byte_size();
+    }
+    if (is_class_type()) {
+        std::size_t max_alignment = 0;
+        for (auto child : get_die().children()) {
+            if (child.abbrev_entry()->tag == DW_TAG_member and
+                child.contains(DW_AT_data_member_location) or
+                child.contains(DW_AT_data_bit_offset)) {
+                auto member_type = child[DW_AT_type].as_type();
+                if (member_type.alignment() > max_alignment) {
+                    max_alignment = member_type.alignment();
+                }
+            }
+        }
+        return max_alignment;
+    }
+    if (get_die().abbrev_entry()->tag == DW_TAG_array_type) {
+        return get_die()[DW_AT_type].as_type().alignment();
+    }
+    return byte_size();
+}
+
+bool sdb::type::has_unaligned_fields() const {
+    if (!is_from_dwarf()) {
+        return false;
+    }
+    if (is_class_type()) {
+        for (auto child : get_die().children()) {
+            if (child.abbrev_entry()->tag == DW_TAG_member and
+                child.contains(DW_AT_data_member_location)) {
+                auto member_type = child[DW_AT_type].as_type();
+                if (child[DW_AT_data_member_location].as_int() %
+                    member_type.alignment() != 0) {
+                    return true;
+                }
+                if (member_type.has_unaligned_fields()) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+std::array<sdb::parameter_class, 2> sdb::type::get_parameter_classes() const {
+    std::array<parameter_class, 2> classes = {
+        parameter_class::no_class, parameter_class::no_class };
+
+    if (!is_from_dwarf()) {
+        switch (get_builtin_type()) {
+        case builtin_type::boolean: classes[0] = parameter_class::integer; break;
+        case builtin_type::character: classes[0] = parameter_class::integer; break;
+        case builtin_type::integer: classes[0] = parameter_class::integer; break;
+        case builtin_type::floating_point: classes[0] = parameter_class::sse; break;
+        case builtin_type::string: classes[0] = parameter_class::integer; break;
+        }
+        return classes;
+    }
+
+    auto stripped = strip_cv_typedef();
+    auto die = stripped.get_die();
+    auto tag = die.abbrev_entry()->tag;
+    if (tag == DW_TAG_base_type and stripped.byte_size() <= 8) {
+        switch (die[DW_AT_encoding].as_int()) {
+        case DW_ATE_boolean: classes[0] = parameter_class::integer; break;
+        case DW_ATE_float: classes[0] = parameter_class::sse; break;
+        case DW_ATE_signed: classes[0] = parameter_class::integer; break;
+        case DW_ATE_signed_char: classes[0] = parameter_class::integer; break;
+        case DW_ATE_unsigned: classes[0] = parameter_class::integer; break;
+        case DW_ATE_unsigned_char: classes[0] = parameter_class::integer; break;
+        default: sdb::error::send("Unimplemented base type encoding");
+        }
+    }
+    else if (tag == DW_TAG_pointer_type or
+        tag == DW_TAG_reference_type or
+        tag == DW_TAG_rvalue_reference_type) {
+        classes[0] = parameter_class::integer;
+    }
+    else if (tag == DW_TAG_base_type and
+        die[DW_AT_encoding].as_int() == DW_ATE_float and
+        stripped.byte_size() == 16) {
+        classes[0] = parameter_class::x87;
+        classes[1] = parameter_class::x87up;
+    }
+    else if (tag == DW_TAG_class_type or
+        tag == DW_TAG_structure_type or
+        tag == DW_TAG_union_type or
+        tag == DW_TAG_array_type) {
+        classes = classify_class_type(*this);
+    }
+    return classes;
+}
+
+bool sdb::type::is_class_type() const {
+    if (!is_from_dwarf()) return false;
+    auto stripped = strip_cv_typedef().get_die();
+    auto tag = stripped.abbrev_entry()->tag;
+    return tag == DW_TAG_class_type or
+        tag == DW_TAG_structure_type or
+        tag == DW_TAG_union_type;
+}
+
+bool sdb::type::is_reference_type() const {
+    if (!is_from_dwarf()) return false;
+    auto stripped = strip_cv_typedef().get_die();
+    auto tag = stripped.abbrev_entry()->tag;
+    return tag == DW_TAG_reference_type or
+        tag == DW_TAG_rvalue_reference_type;
+}
+
+bool sdb::type::is_non_trivial_for_calls() const {
+    auto stripped = strip_cv_typedef().get_die();
+    auto tag = stripped.abbrev_entry()->tag;
+    if (tag == DW_TAG_class_type or
+        tag == DW_TAG_structure_type or
+        tag == DW_TAG_union_type) {
+        for (auto& child : stripped.children()) {
+            if (child.abbrev_entry()->tag == DW_TAG_member and
+                child.contains(DW_AT_data_member_location) or
+                child.contains(DW_AT_data_bit_offset)) {
+                if (child[DW_AT_type].as_type().is_non_trivial_for_calls()) {
+                    return true;
+                }
+            }
+            if (child.abbrev_entry()->tag == DW_TAG_inheritance) {
+                if (child[DW_AT_type].as_type().is_non_trivial_for_calls()) {
+                    return true;
+                }
+            }
+            if (child.contains(DW_AT_virtuality) and
+                child[DW_AT_virtuality].as_int() != DW_VIRTUALITY_none) {
+                return true;
+            }
+            if (child.abbrev_entry()->tag == DW_TAG_subprogram) {
+                if (is_copy_or_move_constructor(*this, child)) {
+                    if (!child.contains(DW_AT_defaulted) or
+                        !child[DW_AT_defaulted].as_int() != DW_DEFAULTED_in_class) {
+                        return true;
+                    }
+                }
+                else if (is_destructor(child)) {
+                    if (!child.contains(DW_AT_defaulted) or
+                        !child[DW_AT_defaulted].as_int() != DW_DEFAULTED_in_class) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    if (tag == DW_TAG_array_type) {
+        return stripped[DW_AT_type].as_type().is_non_trivial_for_calls();
+    }
+    return false;
 }

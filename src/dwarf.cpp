@@ -905,6 +905,19 @@ void sdb::dwarf::index_die(const die& current, bool in_function) const {
         }
     }
 
+    if (is_function) {
+        if (current.contains(DW_AT_specification)) {
+            index_entry entry{ current.cu(), current.position() };
+            member_function_index_.insert(std::make_pair(
+                current[DW_AT_specification].as_reference().position(), entry));
+        }
+        else if (current.contains(DW_AT_abstract_origin)) {
+            index_entry entry{ current.cu(), current.position() };
+            member_function_index_.insert(std::make_pair(
+                current[DW_AT_abstract_origin].as_reference().position(), entry));
+        }
+    }
+
     auto has_location = current.contains(DW_AT_location);
     auto is_variable = current.abbrev_entry()->tag == DW_TAG_variable;
     if (has_location and is_variable and !in_function) {
@@ -1544,8 +1557,8 @@ sdb::dwarf_expression::eval(
             stack.push_back(std::get<std::uint64_t>(reg_val) + offset);
         }
         else if (opcode >= DW_OP_reg0 and opcode <= DW_OP_reg31) {
-            most_recent_location = register_result{ 
-                static_cast<std::uint64_t>(opcode - DW_OP_reg0) 
+            most_recent_location = register_result{
+                static_cast<std::uint64_t>(opcode - DW_OP_reg0)
             };
         }
 
@@ -1918,6 +1931,33 @@ std::optional<sdb::die> sdb::dwarf::find_local_variable(
                 return child;
             }
         }
+    }
+    return std::nullopt;
+}
+
+std::vector<sdb::type> sdb::die::parameter_types() const {
+    std::vector<type> ret;
+    if (!abbrev_->tag == DW_TAG_subprogram) return ret;
+    for (auto& c : children()) {
+        if (c.abbrev_entry()->tag == DW_TAG_formal_parameter) {
+            ret.push_back(c[DW_AT_type].as_type());
+        }
+    }
+    return ret;
+}
+
+std::optional<sdb::die>
+sdb::dwarf::get_member_function_definition(
+    const sdb::die& declaration) const {
+    index();
+    auto it = member_function_index_.find(declaration.position());
+    if (it != member_function_index_.end()) {
+        cursor cur({ it->second.pos, it->second.cu->data().end() });
+        auto die = parse_die(*it->second.cu, cur);
+        if (die.contains(DW_AT_low_pc) or die.contains(DW_AT_ranges)) {
+            return die;
+        }
+        return get_member_function_definition(die);
     }
     return std::nullopt;
 }
