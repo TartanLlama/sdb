@@ -67,6 +67,7 @@ namespace sdb {
         const std::vector<std::byte>& data() const { return data_; }
         const std::byte* data_ptr() const { return data_.data(); }
         const type& value_type() const { return type_; }
+        std::optional<virt_addr> address() const { return address_; }
 
         typed_data fixup_bitfield(
             const sdb::process& proc, const sdb::die& member_die) const;
