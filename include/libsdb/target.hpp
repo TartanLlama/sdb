@@ -96,7 +96,7 @@ namespace sdb {
             const dwarf_expression::result& loc, std::size_t size,
             std::optional<pid_t> otid = std::nullopt) const;
 
-        typed_data resolve_indirect_name(std::string name, sdb::file_addr pc);
+        typed_data resolve_indirect_name(std::string name, sdb::file_addr pc) const;
         std::optional<die> find_variable(std::string name, file_addr pc) const;
     private:
         target(std::unique_ptr<process> proc, std::unique_ptr<elf> obj)
