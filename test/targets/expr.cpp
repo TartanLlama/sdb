@@ -70,7 +70,7 @@ two_eightbyte print_type(two_eightbyte t) {
 }
 
 big print_type(big b) {
-    std::cout << "bigg " << b.i << ' ' << b.j << ' ' << b.k << '\n';
+    std::cout << "big " << b.i << ' ' << b.j << ' ' << b.k << '\n';
     return b;
 }
 
