@@ -7,6 +7,7 @@
 #include <cxxabi.h>
 #include <fstream>
 #include <libsdb/type.hpp>
+#include <libsdb/parse.hpp>
 
 namespace {
     std::filesystem::path dump_vdso(
@@ -469,11 +470,11 @@ namespace {
     sdb::typed_data get_initial_variable_data(
         const sdb::target& target, std::string name, sdb::file_addr pc) {
         if (name[0] == '$') {
-            auto index = std::strtoull(name.data() + 1, nullptr, 10);
-            if (errno != 0 and index == 0) {
+            auto index = sdb::to_integral<std::size_t>(name.substr(1));
+            if (!index) {
                 sdb::error::send("Invalid expression result index");
             }
-            return target.get_expression_result(index);
+            return target.get_expression_result(*index);
         }
         auto var = target.find_variable(name, pc);
         if (!var) {
@@ -520,20 +521,18 @@ namespace {
         }
         else if (arg[0] == '-' or std::isdigit(arg[0])) {
             if (arg.find(".") != std::string::npos) {
-                char* end;
-                auto value = std::strtod(arg.data(), &end);
-                if (end == arg.data() or errno != 0 and value == 0) {
+                auto value = sdb::to_float<double>(arg);
+                if (!value) {
                     sdb::error::send("Invalid floating point literal");
                 }
-                return { sdb::to_byte_vec(value), sdb::builtin_type::floating_point };
+                return { sdb::to_byte_vec(*value), sdb::builtin_type::floating_point };
             }
             else {
-                char* end;
-                auto value = std::strtoll(arg.data(), &end, 10);
-                if (end == arg.data() or errno != 0 and value == 0) {
+                auto value = sdb::to_integral<std::int64_t>(arg);
+                if (!value) {
                     sdb::error::send("Invalid integer literal");
                 }
-                return { sdb::to_byte_vec(value), sdb::builtin_type::integer };
+                return { sdb::to_byte_vec(*value), sdb::builtin_type::integer };
             }
         }
         else {
@@ -885,12 +884,11 @@ sdb::target::resolve_indirect_name(
         else if (name[op_pos] == '[') {
             auto int_end = name.find(']', op_pos);
             auto index_str = name.substr(op_pos + 1, int_end - op_pos - 1);
-            char* end;
-            auto index = std::strtoull(index_str.data(), &end, 10);
-            if (end == index_str.data() or errno != 0 and index == 0) {
+            auto index = to_integral<std::size_t>(index_str);
+            if (!index) {
                 sdb::error::send("Invalid index");
             }
-            data = data.index(get_process(), index);
+            data = data.index(get_process(), *index);
             name = name.substr(int_end + 1);
         }
         op_pos = name.find_first_of(".-[(");
