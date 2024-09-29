@@ -22,6 +22,4 @@ This repository contains the source code for the book [Building a Debugger](http
 - Chapter 18: [Multithreading](https://github.com/TartanLlama/sdb/tree/chapter-18)
 - Chapter 19: [DWARF Expressions](https://github.com/TartanLlama/sdb/tree/chapter-19)
 - Chapter 20: [Variables and Types](https://github.com/TartanLlama/sdb/tree/chapter-20)
-- Chapter 21: Expression Evaluation
-
-Chapter 21 is still undergoing technical review.
+- Chapter 21: [Expression Evaluation](https://github.com/TartanLlama/sdb/tree/chapter-21)
