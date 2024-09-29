@@ -49,7 +49,7 @@ namespace {
                 return virt_addr(offset - file_offset + low_range);
             }
         }
-		sdb::error::send("Could not find load address");
+        sdb::error::send("Could not find load address");
     }
 }
 
@@ -638,7 +638,7 @@ TEST_CASE("Source-level breakpoints", "[breakpoint]") {
     auto reason = proc.wait_on_signal();
 
     REQUIRE(reason.reason == sdb::process_state::exited);
-	close(dev_null);
+    close(dev_null);
 }
 
 TEST_CASE("Source-level stepping", "[target]") {
