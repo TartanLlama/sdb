@@ -679,6 +679,7 @@ namespace {
                 }
                 else {
                     rsp -= args[i].value_type().byte_size();
+                    rsp &= ~(args[i].value_type().alignment() - 1);
                     target.get_process().write_memory(
                         sdb::virt_addr{ rsp }, args[i].data());
                     args[i] = sdb::typed_data{
