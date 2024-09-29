@@ -238,6 +238,9 @@ namespace sdb {
 		bool should_resume_from_syscall(const stop_reason& reason);
 		void swallow_pending_sigstop(pid_t tid);
 
+		void send_continue(pid_t tid);
+		void step_over_breakpoint(pid_t tid);
+
 		pid_t pid_ = 0;
 		bool terminate_on_end_ = true;
 		process_state state_ = process_state::stopped;
