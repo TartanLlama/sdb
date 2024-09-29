@@ -138,8 +138,7 @@ sdb::stop_reason sdb::process::step_instruction(std::optional<pid_t> otid) {
     return reason;
 }
 
-void sdb::process::resume(std::optional<pid_t> otid) {
-    auto tid = otid.value_or(current_thread_);
+void sdb::process::step_over_breakpoint(pid_t tid) {
     auto pc = get_pc(tid);
     if (breakpoint_sites_.enabled_stoppoint_at_address(pc)) {
         auto& bp = breakpoint_sites_.get_by_address(pc);
@@ -154,13 +153,21 @@ void sdb::process::resume(std::optional<pid_t> otid) {
         }
         bp.enable();
     }
+}
 
+void sdb::process::resume(std::optional<pid_t> otid) {
+    auto tid = otid.value_or(current_thread_);
+    step_over_breakpoint(tid);
+    send_continue(tid);
+}
+
+void sdb::process::send_continue(pid_t tid) {
     auto request =
         syscall_catch_policy_.get_mode() == syscall_catch_policy::mode::none ?
         PTRACE_CONT : PTRACE_SYSCALL;
     if (ptrace(request, tid, nullptr, nullptr) < 0) {
         error::send_errno("Could not resume");
-    }    
+    }
     threads_.at(tid).state = process_state::running;
     state_ = process_state::running;
 }
@@ -601,22 +608,31 @@ void sdb::process::write_gprs(const user_regs_struct& gprs, std::optional<pid_t>
 
 void sdb::process::resume_all_threads() {
     for (auto& [tid, _] : threads_) {
-        resume(tid);
+        step_over_breakpoint(tid);
+    }
+    for (auto& [tid, _] : threads_) {
+        send_continue(tid);
     }
 }
 
 void sdb::process::stop_running_threads() {
     for (auto& [tid, thread] : threads_) {
         if (thread.state == process_state::running) {
-            tgkill(pid_, tid, SIGSTOP);
+            if (!thread.pending_sigstop) {
+                tgkill(pid_, tid, SIGSTOP);
+            }
 
             int wait_status;
             waitpid(tid, &wait_status, 0);
 
             stop_reason thread_reason(tid, wait_status);
-            if (thread_reason.reason == process_state::stopped and
-                thread_reason.info != SIGSTOP) {
-                thread.pending_sigstop = true;
+            if (thread_reason.reason == process_state::stopped) {
+                if (thread_reason.info != SIGSTOP) {
+                    thread.pending_sigstop = true;
+                }
+                else if (thread.pending_sigstop) {
+                    thread.pending_sigstop = false;
+                }
             }
 
             thread_reason = handle_signal(thread_reason, false).value_or(thread_reason);
