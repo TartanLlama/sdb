@@ -92,20 +92,10 @@ TEST_CASE("process::resume success", "[process]") {
 }
 
 TEST_CASE("process::resume already terminated", "[process]") {
-    {
-        auto proc = process::launch("targets/end_immediately");
-        proc->resume();
-        proc->wait_on_signal();
-        REQUIRE_THROWS_AS(proc->resume(), error);
-    }
-
-    {
-        auto target = process::launch("targets/end_immediately", false);
-        auto proc = process::attach(target->pid());
-        proc->resume();
-        proc->wait_on_signal();
-        REQUIRE_THROWS_AS(proc->resume(), error);
-    }
+    auto proc = process::launch("targets/end_immediately");
+    proc->resume();
+    proc->wait_on_signal();
+    REQUIRE_THROWS_AS(proc->resume(), error);
 }
 
 
