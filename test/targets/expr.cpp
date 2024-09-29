@@ -1,6 +1,7 @@
 #include <iostream>
 #include <cstring>
 #include <cstdint>
+#include <stdexcept>
 
 struct cat {
     const char* name;
@@ -25,6 +26,7 @@ cat get_cat(const char* name) {
             return c;
         }
     }
+    throw std::runtime_error("No cat with that name");
 }
 
 int print_type(int i) {

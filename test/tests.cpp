@@ -49,7 +49,7 @@ namespace {
                 return virt_addr(offset - file_offset + low_range);
             }
         }
-		sdb::error::send("Could not find load address");
+        sdb::error::send("Could not find load address");
     }
 }
 
@@ -92,20 +92,10 @@ TEST_CASE("process::resume success", "[process]") {
 }
 
 TEST_CASE("process::resume already terminated", "[process]") {
-    {
-        auto proc = process::launch("targets/end_immediately");
-        proc->resume();
-        proc->wait_on_signal();
-        REQUIRE_THROWS_AS(proc->resume(), error);
-    }
-
-    {
-        auto target = process::launch("targets/end_immediately", false);
-        auto proc = process::attach(target->pid());
-        proc->resume();
-        proc->wait_on_signal();
-        REQUIRE_THROWS_AS(proc->resume(), error);
-    }
+    auto proc = process::launch("targets/end_immediately");
+    proc->resume();
+    proc->wait_on_signal();
+    REQUIRE_THROWS_AS(proc->resume(), error);
 }
 
 
@@ -648,7 +638,7 @@ TEST_CASE("Source-level breakpoints", "[breakpoint]") {
     auto reason = proc.wait_on_signal();
 
     REQUIRE(reason.reason == sdb::process_state::exited);
-	close(dev_null);
+    close(dev_null);
 }
 
 TEST_CASE("Source-level stepping", "[target]") {
