@@ -28,7 +28,7 @@ void sdb::pipe::close_write() {
 }
 ```
 
-- Fix off-by-one error in `sdb::process::launch` in *sdb/src/process.cpp:
+- Fix off-by-one error in `sdb::process::launch` in *sdb/src/process.cpp*:
 
 ```diff
 - error::send(std::string(chars, chars + data.size() + 1));
