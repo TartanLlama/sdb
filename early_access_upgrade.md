@@ -283,7 +283,7 @@ sdb::process::read_memory_without_traps(
 - std::string message;
 + std::string message = " ";
 ```
-- In the "Syscall catchpoints work" test in *sdb/test/tests.cpp`, `#include <fcntl.h>` and redirect `stdout` to `/dev/null`:
+- In the "Syscall catchpoints work" test in *sdb/test/tests.cpp*, `#include <fcntl.h>` and redirect `stdout` to `/dev/null`:
 ```diff
 + #include <fcntl.h>
   TEST_CASE("Syscall catchpoints work", "[catchpoint]") {
@@ -293,4 +293,9 @@ sdb::process::read_memory_without_traps(
       --snip--
 +     close(dev_null);
 }
+```
+- Add a space to the start of the `(breakpoint {})` message in `get_sigtrap_info` in *sdb/tools/sdb.cpp*:
+```diff
+- return fmt::format("(breakpoint {})", site.id());
++ return fmt::format(" (breakpoint {})", site.id());
 ```
