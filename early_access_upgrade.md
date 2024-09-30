@@ -173,7 +173,7 @@ namespace sdb {
 +               return virt_addr(offset - file_offset + low_range);
             }
         }
-+		sdb::error::send("Could not find load address");
++       sdb::error::send("Could not find load address");
     }
 ```
 ## Chapter 8 - Memory and Disassembly
