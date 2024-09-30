@@ -1,5 +1,7 @@
 # Early Access Upgrade Guide
 
+If you purchased the Early Access version of Building a Debugger and you want to go straight into the chapters that weren't included in that version, this guide shows you all the code modifications that you'll need to make. If you notice something that is not in this guide, please [file an issue](https://github.com/TartanLlama/sdb/issues).
+
 ## Chapter 3
 
 - Add `[[nodiscard]]` to `sdb::error::send` and `send_errno` in *sdb/include/libsdb/error.hpp*
@@ -102,6 +104,13 @@ TEST_CASE("process::resume already terminated", "[process]") {
 
 ## Chapter 6
 
+- In `sdb::process::launch` in *sdb/src/process.cpp*, do not call `close(STDOUT_FILENO)`, as this is already handled by `dup2`:
+```diff
+- close(STDOUT_FILENO);
+  if (dup2(*stdout_replacement, STDOUT_FILENO) < 0) {
+      exit_with_perror(channel, "stdout replacement failed");
+  }
+```
 - Move definitions of `to_integral`, `to_float`, and `parse_vector` from *sdb/tools/sdb.cpp* into new *sdb/include/libsdb/parse.hpp* header, including the specialization of `to_integral<std::byte>` **and mark it as `inline`**:
 ```cpp
 #ifndef SDB_PARSE_HPP
@@ -156,6 +165,7 @@ namespace sdb {
 
 ## Chapter 7
 
+- Add `sdb::` to calls to `to_integral` in *sdb/tools/sdb.cpp*
 - Use parentheses instead of braces in `get_load_address` in *sdb/test/tests.cpp*, and throw an exception at the end of the function: 
 ```diff
     virt_addr get_load_address(pid_t pid, std::int64_t offset) {
@@ -166,4 +176,120 @@ namespace sdb {
         }
 +		sdb::error::send("Could not find load address");
     }
+```
+## Chapter 8
+
+- Put `span` in *sdb/include/libsdb/types.hpp* in the `sdb` namespace
+- New definition of `sdb::process::read_memory` in *sdb/src/process.cpp` that can handle partial reads:
+```cpp
+std::vector<std::byte>
+sdb::process::read_memory(
+      virt_addr address, std::size_t amount) const {
+	std::vector<std::byte> ret(amount);
+
+	iovec local_desc{ ret.data(), ret.size() };
+	std::vector<iovec> remote_descs;
+    while (amount > 0) {
+        auto up_to_next_page = 0x1000 - (address.addr() & 0xfff);
+        auto chunk_size = std::min(amount, up_to_next_page);
+        remote_descs.push_back({ reinterpret_cast<void*>(address.addr()), chunk_size });
+        amount -= chunk_size;
+        address += chunk_size;
+    }
+
+	if (process_vm_readv(pid_, &local_desc, /*liovcnt=*/1,
+		remote_descs.data(), /*riovcnt=*/remote_descs.size(), /*flags=*/0) < 0) {
+		error::send_errno("Could not read process memory");
+	}
+	return ret;
+}
+```
+- Add `sdb::` to all calls to `to_integral` and `parse_vector` in *sdb/tools/sdb.cpp*
+- Move definition of `parse_vector(std::string_view text)` into *sdb/include/libsdb/parse.hpp* and add the `inline` specifier
+- Add `#include <unistd.h>` to *sdb/src/process.cpp*
+- Correct assignment to `*address` in `sdb::disassembler::disassemble` in *sdb/src/disassembler.cpp*:
+```diff
+-*address = process->get_pc();
++address.emplace(process_->get_pc());
+```
+- In `sdb::process::read_memory_without_traps` in *sdb/src/process.cpp*, do not attempt to remove traps for breakpoints that are disabled:
+```diff
+std::vector<std::byte>
+sdb::process::read_memory_without_traps(
+     virt_addr address, std::size_t amount) const {
+    --snip--
+    for (auto site : sites) {
++       if (!site->is_enabled()) continue;
+        auto offset = site->address() - address.addr();
+        memory[offset.addr()] = site->saved_data_;
+    }
+    --snip--
+}
+
+## Chapter 9
+
+- Make `sdb::process::read_memory_without_traps` in *sdb/src/process.cpp* ignore hardware breakpoints:
+```diff
+std::vector<std::byte>
+sdb::process::read_memory_without_traps(
+      virt_addr address, std::size_t amount) const {
+    ___--snip--___
+    for (auto site : sites) {
+-       if (!site->is_enabled()) continue;
++       if (!site->is_enabled() or site->is_hardware()) continue;
+        --snip--
+    }
+    --snip--
+}
+```
+- Add `default` case to the `switch` statement in `encode_hardware_stoppoint_mode` in *sdb/src/process.cpp*:
+```diff
++ default: sdb::error::send("Invalid stoppoint mode");
+```
+- Add `sdb::` to calls to `to_integral` in *sdb/tools/sdb.cpp*
+- Add `default` case to the `switch` statement in `handle_breakpoint_list` in *sdb/tools/sdb.cpp*:
+```diff
++ default: sdb::error::send("Invalid stoppoint mode");
+```
+- Remove additional call to `process->wait_on_signal` from the "Watchpoint detects read" test in *sdb/test/tests.cpp*:
+```diff
+    proc->resume();
+-   proc->wait_on_signal();
+    auto reason = proc->wait_on_signal();
+```
+- Add `#include <csignal>` to *sdb/tools/sdb.cpp*
+- Change the type of `syscall_information::id` in *sdb/include/libsdb/process.hpp*:
+```diff
+    struct syscall_information {
+-        std::uint8_t id;
++        std::uint16_t id; 
+        bool entry; 
+        union { 
+            std::array<std::uint64_t, 6> args;
+            std::int64_t ret;
+        };
+    };
+```
+- Initialize `reason.trap_reason` to `sdb::trap_reason::unknown` in `sdb::process::augment_stop_reason` in *sdb/src/process.cpp*:
+```diff
+    expecting_syscall_exit_ = false;
+
++   reason.trap_reason = trap_type::unknown;
+    if (reason.info == SIGTRAP) {
+```
+- Initialize `message` in `get_sigtrap_info` in *sdb/src/process.cpp* to `" "`:
+```diff
+-std::string message;
++std::string message = " ";
+```
+- In the "Syscall catchpoints work" test in *sdb/test/tests.cpp`, `#include <fcntl.h>` and redirect `stdout` to `/dev/null`:
+```diff
++ #include <fcntl.h>
+  TEST_CASE("Syscall catchpoints work", "[catchpoint]") {
++     auto dev_null = open("/dev/null", O_WRONLY);
++     auto proc = process::launch("targets/anti_debugger", true, dev_null);
+-     auto proc = process::launch("targets/anti_debugger");
+      --snip--
++     close(dev_null);
+}
 ```
