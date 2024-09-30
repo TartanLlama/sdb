@@ -158,7 +158,7 @@ namespace sdb {
 ```
 - Change `lea` in *sdb/test/targets/reg_write.s* to `leaq`:
 ```diff
-- leaq     hex_format(%rip), %rdi
+- lea     hex_format(%rip), %rdi
 + leaq     hex_format(%rip), %rdi
 ```
 
