@@ -264,8 +264,8 @@ sdb::process::read_memory_without_traps(
 - Change the type of `syscall_information::id` in *sdb/include/libsdb/process.hpp*:
 ```diff
     struct syscall_information {
--        std::uint8_t id;
-+        std::uint16_t id; 
+-       std::uint8_t id;
++       std::uint16_t id; 
         bool entry; 
         union { 
             std::array<std::uint64_t, 6> args;
