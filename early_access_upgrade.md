@@ -2,12 +2,11 @@
 
 If you purchased the Early Access version of Building a Debugger and you want to go straight into the chapters that weren't included in that version, this guide shows you all the code modifications that you'll need to make. If you notice something that is not in this guide, please [file an issue](https://github.com/TartanLlama/sdb/issues).
 
-## Chapter 3
+## Chapter 3 - Attaching to a Process
 
 - Add `[[nodiscard]]` to `sdb::error::send` and `send_errno` in *sdb/include/libsdb/error.hpp*
 
-## Chapter 4
-
+## Chapter 4 - Pipes, procfs, and Automated Testing
 
 - Use `-1` as a null indicator in `sdb::pipe::close_read` and `close_write` in *sdb/src/pipe.cpp*:
 
@@ -56,7 +55,7 @@ TEST_CASE("process::resume already terminated", "[process]") {
 }
 ```
 
-## Chapter 5
+## Chapter 5 - Registers
 
 - Correct the superregister for `dil` in *sdb/include/libsdb/detail/registers.inc*:
 
@@ -102,7 +101,7 @@ TEST_CASE("process::resume already terminated", "[process]") {
 + std::copy(val_bytes, val_bytes + sizeof(v), bytes + info.offset);
 ```
 
-## Chapter 6
+## Chapter 6 - Testing Registers with x64 Assembly
 
 - In `sdb::process::launch` in *sdb/src/process.cpp*, do not call `close(STDOUT_FILENO)`, as this is already handled by `dup2`:
 ```diff
@@ -163,7 +162,7 @@ namespace sdb {
 + leaq     hex_format(%rip), %rdi
 ```
 
-## Chapter 7
+## Chapter 7 - Software Breakpoints
 
 - Add `sdb::` to calls to `to_integral` in *sdb/tools/sdb.cpp*
 - Use parentheses instead of braces in `get_load_address` in *sdb/test/tests.cpp*, and throw an exception at the end of the function: 
@@ -177,7 +176,7 @@ namespace sdb {
 +		sdb::error::send("Could not find load address");
     }
 ```
-## Chapter 8
+## Chapter 8 - Memory and Disassembly
 
 - Put `span` in *sdb/include/libsdb/types.hpp* in the `sdb` namespace
 - New definition of `sdb::process::read_memory` in *sdb/src/process.cpp* that can handle partial reads:
@@ -227,7 +226,7 @@ sdb::process::read_memory_without_traps(
 }
 ```
 
-## Chapter 9
+## Chapter 9 - Hardware Breakpoints and Watchpoints
 
 - Make `sdb::process::read_memory_without_traps` in *sdb/src/process.cpp* ignore hardware breakpoints:
 ```diff
@@ -258,6 +257,9 @@ sdb::process::read_memory_without_traps(
 -   proc->wait_on_signal();
     auto reason = proc->wait_on_signal();
 ```
+
+## Chapter 10 - Signals and Syscalls
+
 - Add `#include <csignal>` to *sdb/tools/sdb.cpp*
 - Change the type of `syscall_information::id` in *sdb/include/libsdb/process.hpp*:
 ```diff
