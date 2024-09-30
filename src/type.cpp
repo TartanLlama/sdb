@@ -119,7 +119,7 @@ namespace {
         auto sub_size = std::accumulate(
             dimensions.begin(), dimensions.end(),
             value_type.byte_size(), std::multiplies<>());
-        for (auto i = 0; i < size; ++i) {
+        for (std::size_t i = 0; i < size; ++i) {
             sdb::span<const std::byte> subdata{ data.begin() + i * sub_size, data.end() };
             ret += visualize_subrange(proc, value_type, subdata, dimensions);
 
