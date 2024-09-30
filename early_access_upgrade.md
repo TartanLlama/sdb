@@ -184,10 +184,10 @@ namespace sdb {
 std::vector<std::byte>
 sdb::process::read_memory(
       virt_addr address, std::size_t amount) const {
-	std::vector<std::byte> ret(amount);
+    std::vector<std::byte> ret(amount);
 
-	iovec local_desc{ ret.data(), ret.size() };
-	std::vector<iovec> remote_descs;
+    iovec local_desc{ ret.data(), ret.size() };
+    std::vector<iovec> remote_descs;
     while (amount > 0) {
         auto up_to_next_page = 0x1000 - (address.addr() & 0xfff);
         auto chunk_size = std::min(amount, up_to_next_page);
@@ -196,11 +196,11 @@ sdb::process::read_memory(
         address += chunk_size;
     }
 
-	if (process_vm_readv(pid_, &local_desc, /*liovcnt=*/1,
-		remote_descs.data(), /*riovcnt=*/remote_descs.size(), /*flags=*/0) < 0) {
-		error::send_errno("Could not read process memory");
-	}
-	return ret;
+    if (process_vm_readv(pid_, &local_desc, /*liovcnt=*/1,
+        remote_descs.data(), /*riovcnt=*/remote_descs.size(), /*flags=*/0) < 0) {
+        error::send_errno("Could not read process memory");
+    }
+    return ret;
 }
 ```
 - Add `sdb::` to all calls to `to_integral` and `parse_vector` in *sdb/tools/sdb.cpp*
