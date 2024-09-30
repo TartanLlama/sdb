@@ -209,8 +209,8 @@ sdb::process::read_memory(
 - Add `#include <unistd.h>` to *sdb/src/process.cpp*
 - Correct assignment to `*address` in `sdb::disassembler::disassemble` in *sdb/src/disassembler.cpp*:
 ```diff
--*address = process->get_pc();
-+address.emplace(process_->get_pc());
+- *address = process->get_pc();
++ address.emplace(process_->get_pc());
 ```
 - In `sdb::process::read_memory_without_traps` in *sdb/src/process.cpp*, do not attempt to remove traps for breakpoints that are disabled:
 ```diff
@@ -280,8 +280,8 @@ sdb::process::read_memory_without_traps(
 ```
 - Initialize `message` in `get_sigtrap_info` in *sdb/src/process.cpp* to `" "`:
 ```diff
--std::string message;
-+std::string message = " ";
+- std::string message;
++ std::string message = " ";
 ```
 - In the "Syscall catchpoints work" test in *sdb/test/tests.cpp`, `#include <fcntl.h>` and redirect `stdout` to `/dev/null`:
 ```diff
