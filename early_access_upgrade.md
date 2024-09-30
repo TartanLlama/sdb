@@ -180,7 +180,7 @@ namespace sdb {
 ## Chapter 8
 
 - Put `span` in *sdb/include/libsdb/types.hpp* in the `sdb` namespace
-- New definition of `sdb::process::read_memory` in *sdb/src/process.cpp` that can handle partial reads:
+- New definition of `sdb::process::read_memory` in *sdb/src/process.cpp* that can handle partial reads:
 ```cpp
 std::vector<std::byte>
 sdb::process::read_memory(
@@ -225,6 +225,7 @@ sdb::process::read_memory_without_traps(
     }
     --snip--
 }
+```
 
 ## Chapter 9
 
