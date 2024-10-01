@@ -390,7 +390,7 @@ namespace {
             sdb::error::send("Invalid CIE augmentation");
         }
 
-        if (version == 3 or version == 4) {
+        if (version == 4) {
             auto address_size = cur.u8();
             auto segment_size = cur.u8();
             if (address_size != 8)
