@@ -460,11 +460,9 @@ namespace {
         current_offset = elf->data_pointer_as_file_offset(cur.position());
         auto text_section_start = elf->get_section_start_address(".text")
             .value_or(sdb::file_addr{});
-        auto plt_start = elf->get_section_start_address(".got.plt")
-            .value_or(sdb::file_addr{});
         auto initial_location_addr = parse_eh_frame_pointer(
             *elf, cur, cie.fde_pointer_encoding, current_offset.off(),
-            text_section_start.addr(), plt_start.addr(), 0);
+            text_section_start.addr(), 0, 0);
         sdb::file_addr initial_location{ *elf, initial_location_addr };
 
         auto address_range = parse_eh_frame_pointer_with_base(
