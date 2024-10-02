@@ -26,12 +26,30 @@ namespace {
         return data[index_of_status_indicator];
     }
 
-    std::int64_t get_entry_point(std::filesystem::path path) {
+    std::int64_t get_entry_point_offset(std::filesystem::path path) {
         std::ifstream elf_file(path);
 
         Elf64_Ehdr header;
         elf_file.read(reinterpret_cast<char*>(&header), sizeof(header));
-        return header.e_entry;
+
+        auto entry_file_address = header.e_entry;
+
+        auto command = std::string("readelf -S ") + path.string() + " | grep .text";
+        auto pipe = popen(command.c_str(), "r");
+        std::string data;
+        data.resize(1024);
+        std::fgets(data.data(), data.size(), pipe);
+        pclose(pipe);
+
+        std::regex text_regex(R"(PROGBITS\s+(\w{16})\s+(\w{8}))");
+        std::smatch groups;
+        std::regex_search(data, groups, text_regex);
+
+        auto address = std::stol(groups[1], nullptr, 16);
+        auto offset = std::stol(groups[2], nullptr, 16);
+        auto load_bias = address - offset;
+
+        return header.e_entry - load_bias;
     }
 
     virt_addr get_load_address(pid_t pid, std::int64_t offset) {
@@ -293,7 +311,7 @@ TEST_CASE("Breakpoint on address works", "[breakpoint]") {
     auto proc = process::launch("targets/hello_sdb", true, channel.get_write());
     channel.close_write();
 
-    auto offset = get_entry_point("targets/hello_sdb");
+    auto offset = get_entry_point_offset("targets/hello_sdb");
     auto load_address = get_load_address(proc->pid(), offset);
 
     proc->create_breakpoint_site(load_address).enable();
@@ -765,7 +783,7 @@ TEST_CASE("Can read global integer variable", "[variable]") {
 
     auto var_die = target->get_main_elf().get_dwarf().find_global_variable("g_int");
     auto var_loc = var_die.value()[DW_AT_location]
-        .as_evaluated_location(proc, proc.get_registers());
+        .as_evaluated_location(proc, proc.get_registers(), false);
     auto res = target->read_location_data(var_loc, 8);
     auto val = from_bytes<std::uint64_t>(res.data());
 
@@ -795,7 +813,7 @@ TEST_CASE("DWARF expressions work", "[dwarf]") {
 
     sdb::span<const std::byte> data{
         reinterpret_cast<std::byte*>(piece_data.data()), piece_data.size() };
-    auto expr = sdb::dwarf_expression(target->get_main_elf().get_dwarf(), data);
+    auto expr = sdb::dwarf_expression(target->get_main_elf().get_dwarf(), data, false);
     auto res = expr.eval(proc, proc.get_registers());
 
     auto& pieces = std::get<sdb::dwarf_expression::pieces_result>(res).pieces;
