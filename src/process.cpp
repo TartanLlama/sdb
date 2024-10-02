@@ -425,9 +425,9 @@ void sdb::process::augment_stop_reason(sdb::stop_reason& reason) {
         error::send_errno("Failed to get signal info");
     }
 
-    if (reason.info == (SIGTRAP | 0x80) or info.si_code == TRAP_BRKPT) {
-        auto& sys_info = reason.syscall_info.emplace();
-        auto& regs = get_registers();
+	if (reason.info == (SIGTRAP | 0x80)) {
+		auto& sys_info = reason.syscall_info.emplace();
+		auto& regs = get_registers();
 
         if (expecting_syscall_exit_) {
             sys_info.entry = false;
