@@ -865,7 +865,7 @@ namespace {
 		if (is_prefix(args[1], "read")) {
 			auto die = target.get_main_elf().get_dwarf().find_global_variable(args[2]);
 			auto loc = die.value()[DW_AT_location].as_evaluated_location(
-				target.get_process(), target.get_stack().current_frame().regs);
+				target.get_process(), target.get_stack().current_frame().regs, false);
 			auto value = target.read_location_data(loc, 8);
 			std::uint64_t res = 0;
 			std::copy(value.begin(), value.end(),
