@@ -765,7 +765,7 @@ TEST_CASE("Can read global integer variable", "[variable]") {
 
     auto var_die = target->get_main_elf().get_dwarf().find_global_variable("g_int");
     auto var_loc = var_die.value()[DW_AT_location]
-        .as_evaluated_location(proc, proc.get_registers());
+        .as_evaluated_location(proc, proc.get_registers(), false);
     auto res = target->read_location_data(var_loc, 8);
     auto val = from_bytes<std::uint64_t>(res.data());
 
@@ -795,7 +795,7 @@ TEST_CASE("DWARF expressions work", "[dwarf]") {
 
     sdb::span<const std::byte> data{
         reinterpret_cast<std::byte*>(piece_data.data()), piece_data.size() };
-    auto expr = sdb::dwarf_expression(target->get_main_elf().get_dwarf(), data);
+    auto expr = sdb::dwarf_expression(target->get_main_elf().get_dwarf(), data, false);
     auto res = expr.eval(proc, proc.get_registers());
 
     auto& pieces = std::get<sdb::dwarf_expression::pieces_result>(res).pieces;

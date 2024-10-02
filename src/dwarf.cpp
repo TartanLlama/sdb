@@ -1258,8 +1258,8 @@ namespace {
                 break;
             case DW_CFA_def_cfa:
                 ctx.cfa_rule = cfa_register_rule{
-                    static_cast<std::uint32_t>(cur.uleb128()),
-                    static_cast<std::uint32_t>(cur.uleb128())
+                  static_cast<std::uint32_t>(cur.uleb128()),
+                  static_cast<std::uint32_t>(cur.uleb128())
                 };
                 break;
             case DW_CFA_def_cfa_sf:
@@ -1281,7 +1281,7 @@ namespace {
             case DW_CFA_def_cfa_expression: {
                 auto length = cur.uleb128();
                 auto expr = sdb::dwarf_expression{
-                    elf, { cur.position(), cur.position() + length } };
+                    elf, { cur.position(), cur.position() + length }, true };
                 ctx.cfa_rule = cfa_expr_rule{ expr };
                 break;
             }
@@ -1289,7 +1289,7 @@ namespace {
                 auto reg = cur.uleb128();
                 auto length = cur.uleb128();
                 auto expr = sdb::dwarf_expression{
-                    elf, { cur.position(), cur.position() + length } };
+                    elf, { cur.position(), cur.position() + length }, true };
                 ctx.register_rules.emplace(reg, expr_rule{ expr });
                 break;
             }
@@ -1297,7 +1297,7 @@ namespace {
                 auto reg = cur.uleb128();
                 auto length = cur.uleb128();
                 auto expr = sdb::dwarf_expression{
-                    elf, { cur.position(), cur.position() + length } };
+                    elf, { cur.position(), cur.position() + length }, true };
                 ctx.register_rules.emplace(reg, val_expr_rule{ expr });
                 break;
             }
@@ -1455,13 +1455,7 @@ namespace {
         const sdb::registers& regs) {
         auto simple_loc = std::get_if<sdb::dwarf_expression::simple_location>(&loc);
         if (!simple_loc) sdb::error::send("Unsupported frame base location");
-        if (auto reg_loc = std::get_if<sdb::dwarf_expression::register_result>(simple_loc)) {
-            auto reg_info = sdb::register_info_by_dwarf(reg_loc->reg_num);
-            auto reg_value = regs.read(reg_info);
-            return sdb::virt_addr{ std::get<std::uint64_t>(reg_value) };
-        }
-        else if (
-            auto addr_res = std::get_if<sdb::dwarf_expression::address_result>(simple_loc)) {
+        if (auto addr_res = std::get_if<sdb::dwarf_expression::address_result>(simple_loc)) {
             return addr_res->address;
         }
         sdb::error::send("Unsupported frame base location");
@@ -1534,9 +1528,16 @@ sdb::dwarf_expression::eval(
             stack.push_back(std::get<std::uint64_t>(reg_val) + offset);
         }
         else if (opcode >= DW_OP_reg0 and opcode <= DW_OP_reg31) {
-            most_recent_location = register_result{ 
-                static_cast<std::uint64_t>(opcode - DW_OP_reg0) 
-            };
+            auto reg = opcode - DW_OP_reg0;
+            if (in_frame_info_) {
+                auto reg_val = regs.read(sdb::register_info_by_dwarf(reg));
+                stack.push_back(std::get<std::uint64_t>(reg_val));
+            }
+            else {
+                most_recent_location = register_result{
+                    static_cast<std::uint64_t>(reg)
+                };
+            }
         }
 
         switch (opcode) {
@@ -1587,7 +1588,7 @@ sdb::dwarf_expression::eval(
         }
         case DW_OP_fbreg: {
             auto offset = cur.sleb128();
-            auto fb_loc = func.value()[DW_AT_frame_base].as_evaluated_location(proc, regs);
+            auto fb_loc = func.value()[DW_AT_frame_base].as_evaluated_location(proc, regs, true);
             auto fb_addr = read_frame_base_result(fb_loc, regs);
             stack.push_back(fb_addr.addr() + offset);
             break;
@@ -1730,8 +1731,16 @@ sdb::dwarf_expression::eval(
         case DW_OP_call_ref:
             sdb::error::send("Unsupported opcode DW_OP_call_ref");
         case DW_OP_regx:
-            most_recent_location = register_result{
-                cur.u8() };
+            if (in_frame_info_) {
+                auto reg_val = regs.read(
+                    sdb::register_info_by_dwarf(cur.uleb128()));
+                stack.push_back(
+                    std::get<std::uint64_t>(reg_val));
+            }
+            else {
+                most_recent_location = register_result{
+                    cur.uleb128() };
+            }
             break;
 
         case DW_OP_implicit_value: {
@@ -1790,7 +1799,7 @@ sdb::location_list::eval(
         else {
             auto length = cur.u16();
             if (pc.addr() >= first and pc.addr() < second) {
-                dwarf_expression expr(*parent_, { cur.position(), cur.position() + length });
+                dwarf_expression expr(*parent_, { cur.position(), cur.position() + length }, in_frame_info_);
                 return expr.eval(proc, regs);
             }
             else {
@@ -1804,14 +1813,14 @@ sdb::location_list::eval(
     return dwarf_expression::empty_result{};
 }
 
-sdb::dwarf_expression sdb::attr::as_expression() const {
+sdb::dwarf_expression sdb::attr::as_expression(bool in_frame_info) const {
     cursor cur({ location_, cu_->data().end() });
     auto length = cur.uleb128();
     span<const std::byte> data{ cur.position(), length };
-    return dwarf_expression{ *cu_->dwarf_info(), data };
+    return dwarf_expression{ *cu_->dwarf_info(), data, in_frame_info };
 }
 
-sdb::location_list sdb::attr::as_location_list() const {
+sdb::location_list sdb::attr::as_location_list(bool in_frame_info) const {
     auto section = cu_->dwarf_info()->elf_file()->get_section_contents(
         ".debug_loc");
 
@@ -1819,18 +1828,18 @@ sdb::location_list sdb::attr::as_location_list() const {
     auto offset = cur.u32();
 
     span<const std::byte> data(section.begin() + offset, section.end());
-    return location_list{ *cu_->dwarf_info(), *cu_, data };
+    return location_list{ *cu_->dwarf_info(), *cu_, data, in_frame_info };
 }
 
 sdb::dwarf_expression::result
 sdb::attr::as_evaluated_location(
-    const sdb::process& proc, const registers& regs) const {
+    const sdb::process& proc, const registers& regs, bool in_frame_info) const {
     if (form_ == DW_FORM_exprloc) {
-        auto expr = as_expression();
+        auto expr = as_expression(in_frame_info);
         return expr.eval(proc, regs);
     }
     else if (form_ == DW_FORM_sec_offset) {
-        auto loc_list = as_location_list();
+        auto loc_list = as_location_list(in_frame_info);
         return loc_list.eval(proc, regs);
     }
     else {

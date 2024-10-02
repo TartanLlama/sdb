@@ -476,7 +476,7 @@ namespace {
         auto var_type = var.value()[DW_AT_type].as_type();
 
         auto loc = var.value()[DW_AT_location].as_evaluated_location(
-            target.get_process(), target.get_stack().current_frame().regs);
+            target.get_process(), target.get_stack().current_frame().regs, false);
         auto data_vec = target.read_location_data(loc, var_type.byte_size());
 
         std::optional<sdb::virt_addr> address;

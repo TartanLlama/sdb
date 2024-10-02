@@ -109,8 +109,8 @@ namespace sdb {
 		};
 		using result = std::variant<simple_location, pieces_result>;
 
-		dwarf_expression(const dwarf& parent, span<const std::byte> expr_data)
-			: parent_(&parent), expr_data_(expr_data) {}
+		dwarf_expression(const dwarf& parent, span<const std::byte> expr_data, bool in_frame_info)
+			: parent_(&parent), expr_data_(expr_data), in_frame_info_(in_frame_info) {}
 
 		result eval(
 			const sdb::process& proc,
@@ -119,15 +119,15 @@ namespace sdb {
 	private:
 		const dwarf* parent_;
 		span<const std::byte> expr_data_;
-
+        bool in_frame_info_;
 	};
 
 	class location_list {
 	public:
 		location_list(
 			const dwarf& parent, const compile_unit& cu,
-			span<const std::byte> expr_data)
-			: parent_(&parent), cu_(&cu), expr_data_(expr_data) {}
+			span<const std::byte> expr_data, bool in_frame_info)
+			: parent_(&parent), cu_(&cu), expr_data_(expr_data), in_frame_info_(in_frame_info) {}
 
 		dwarf_expression::result eval(
 			const sdb::process& proc, const registers& regs) const;
@@ -135,6 +135,7 @@ namespace sdb {
 		const dwarf* parent_;
 		const compile_unit* cu_;
 		span<const std::byte> expr_data_;
+        bool in_frame_info_;
 	};
 
 	class type;
@@ -154,10 +155,10 @@ namespace sdb {
 		std::string_view as_string() const;
 		die as_reference() const;
 		range_list as_range_list() const;
-		dwarf_expression as_expression() const;
-		location_list as_location_list() const;
+		dwarf_expression as_expression(bool in_frame_info) const;
+		location_list as_location_list(bool in_frame_info) const;
 		dwarf_expression::result as_evaluated_location(
-			const sdb::process& proc, const registers& regs) const;
+			const sdb::process& proc, const registers& regs, bool in_frame_info) const;
 		type as_type() const;
 
 	private:
