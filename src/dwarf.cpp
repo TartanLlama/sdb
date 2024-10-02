@@ -354,20 +354,12 @@ namespace {
         switch (encoding & 0x70) {
         case DW_EH_PE_absptr: break;
         case DW_EH_PE_pcrel:
-            if (pc == 0)
-                sdb::error::send("pcrel pointer with no pc");
             base = pc; break;
         case DW_EH_PE_textrel:
-            if (text_section_start == 0)
-                sdb::error::send("textrel pointer with no text section start");
             base = text_section_start; break;
         case DW_EH_PE_datarel:
-            if (data_section_start == 0)
-                sdb::error::send("datarel pointer with no data section start");
             base = data_section_start; break;
         case DW_EH_PE_funcrel:
-            if (func_start == 0)
-                sdb::error::send("funcrel pointer with no function start");
             base = func_start; break;
         default: sdb::error::send("Unknown eh_frame pointer encoding");
         }
