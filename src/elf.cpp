@@ -52,7 +52,7 @@ void sdb::elf::build_symbol_maps() {
 
 		if (symbol.st_value != 0 and 
 			symbol.st_name != 0 and 
-			symbol.st_info != STT_TLS) {
+			ELF64_ST_TYPE(symbol.st_info) != STT_TLS) {
 			auto addr_range = std::pair(
 				file_addr{ *this, symbol.st_value },
 				file_addr{ *this, symbol.st_value + symbol.st_size });
