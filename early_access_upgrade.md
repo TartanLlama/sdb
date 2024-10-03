@@ -184,27 +184,41 @@ namespace sdb {
 
         Elf64_Ehdr header;
         elf_file.read(reinterpret_cast<char*>(&header), sizeof(header));
+
 -       return header.e_entry;
-+
 +       auto entry_file_address = header.e_entry;
-+
-+       auto command = std::string("readelf -S ") + path.string() + " | grep .text";
-+       auto pipe = popen(command.c_str(), "r");
-+       std::string data;
-+       data.resize(1024);
-+       std::fgets(data.data(), data.size(), pipe);
-+       pclose(pipe);
-+
-+       std::regex text_regex(R"(PROGBITS\s+(\w{16})\s+(\w{8}))");
-+       std::smatch groups;
-+       std::regex_search(data, groups, text_regex);
-+
-+       auto address = std::stol(groups[1], nullptr, 16);
-+       auto offset = std::stol(groups[2], nullptr, 16);
-+       auto load_bias = address - offset;
-+
-+       return header.e_entry - load_bias;
++       return entry_file_address - get_section_load_bias(path, entry_file_address);
     }
+```
+- New function for retrieving the section load bias in *sdb/test/tests.cpp*:
+```cpp
+namespace {
+    std::int64_t get_section_load_bias(std::filesystem::path path, Elf64_Addr file_address) {
+        auto command = std::string("readelf -WS ") + path.string();
+        auto pipe = popen(command.c_str(), "r");
+
+        std::regex text_regex(R"(PROGBITS\s+(\w+)\s+(\w+)\s+(\w+))");
+        char* line = nullptr;
+        std::size_t len = 0;
+        while (getline(&line, &len, pipe) != -1) {
+            std::cmatch groups;
+            if (std::regex_search(line, groups, text_regex)) {
+                auto address = std::stol(groups[1], nullptr, 16);
+                auto offset = std::stol(groups[2], nullptr, 16);
+                auto size = std::stol(groups[3], nullptr, 16);
+                if (address <= file_address and file_address < (address + size)) {
+                    free(line);
+                    pclose(pipe);
+                    return address - offset;
+                }
+            }
+            free(line);
+            line = nullptr;
+        }
+        pclose(pipe);
+        sdb::error::send("Could not find section load bias");
+    }
+}
 ```
 - Update the call to `get_entry_point` in *sdb/test/tests.cpp* to call `get_entry_point_offset`:
 ```diff
