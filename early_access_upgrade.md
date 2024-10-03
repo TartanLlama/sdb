@@ -176,6 +176,41 @@ namespace sdb {
 +       sdb::error::send("Could not find load address");
     }
 ```
+- Correct `get_entry_point` in *sdb/test/tests.cpp* to compute the file offset rather than file address:
+```diff
+-   std::int64_t get_entry_point(std::filesystem::path path) {
++   std::int64_t get_entry_point_offset(std::filesystem::path path) {
+        std::ifstream elf_file(path);
+
+        Elf64_Ehdr header;
+        elf_file.read(reinterpret_cast<char*>(&header), sizeof(header));
+-       return header.e_entry;
++
++       auto entry_file_address = header.e_entry;
++
++       auto command = std::string("readelf -S ") + path.string() + " | grep .text";
++       auto pipe = popen(command.c_str(), "r");
++       std::string data;
++       data.resize(1024);
++       std::fgets(data.data(), data.size(), pipe);
++       pclose(pipe);
++
++       std::regex text_regex(R"(PROGBITS\s+(\w{16})\s+(\w{8}))");
++       std::smatch groups;
++       std::regex_search(data, groups, text_regex);
++
++       auto address = std::stol(groups[1], nullptr, 16);
++       auto offset = std::stol(groups[2], nullptr, 16);
++       auto load_bias = address - offset;
++
++       return header.e_entry - load_bias;
+    }
+```
+- Update the call to `get_entry_point` in *sdb/test/tests.cpp* to call `get_entry_point_offset`:
+```diff
+-    auto offset = get_entry_point("targets/hello_sdb");
++    auto offset = get_entry_point_offset("targets/hello_sdb");
+```
 ## Chapter 8 - Memory and Disassembly
 
 - Put `span` in *sdb/include/libsdb/types.hpp* in the `sdb` namespace
