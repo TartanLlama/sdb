@@ -1,6 +1,6 @@
 # Early Access Upgrade Guide
 
-If you purchased the Early Access version of Building a Debugger and you want to go straight into the chapters that weren't included in that version, this guide shows you all the code modifications that you'll need to make. If you notice something that is not in this guide, please [file an issue](https://github.com/TartanLlama/sdb/issues).
+If you purchased the first Early Access version of Building a Debugger and you want to go straight into the chapters that weren't included in that version, this guide shows you all the code modifications that you'll need to make. If you notice something that is not in this guide, please [file an issue](https://github.com/TartanLlama/sdb/issues).
 
 ## Chapter 3 - Attaching to a Process
 
