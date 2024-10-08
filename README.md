@@ -28,4 +28,4 @@ If you ordered the Early Access version of the book and want to update your code
 
 ## Other implementations
 
-*Your codebase here*: I'd love to feature implementations of the book written by you, especially if they're in a language other than C++. If you'd like to have your implementation featured here, please [create an issue](https://github.com/TartanLlama/sdb/issues/new).
+*Your codebase here*: I'd love to feature implementations of the book written by you, especially if they're in a language other than C++. If you'd like to have your implementation featured here, please [create an issue](https://github.com/TartanLlama/sdb/issues/new?assignees=TartanLlama&labels=&projects=&template=new-implementation.md&title=New+implementation).
