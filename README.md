@@ -25,3 +25,7 @@ If you ordered the Early Access version of the book and want to update your code
 - Chapter 19: [DWARF Expressions](https://github.com/TartanLlama/sdb/tree/chapter-19)
 - Chapter 20: [Variables and Types](https://github.com/TartanLlama/sdb/tree/chapter-20)
 - Chapter 21: [Expression Evaluation](https://github.com/TartanLlama/sdb/tree/chapter-21)
+
+## Other implementations
+
+*Your codebase here*: I'd love to feature implementations of the book written by you, especially if they're in a language other than C++. If you'd like to have your implementation featured here, please [create an issue](https://github.com/TartanLlama/sdb/issues/new).
