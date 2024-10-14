@@ -4,7 +4,7 @@ If you purchased the first Early Access version of Building a Debugger and you w
 
 ## Chapter 3 - Attaching to a Process
 
-- Add `[[nodiscard]]` to `sdb::error::send` and `send_errno` in *sdb/include/libsdb/error.hpp*
+- Add `[[noreturn]]` to `sdb::error::send` and `send_errno` in *sdb/include/libsdb/error.hpp*
 
 ## Chapter 4 - Pipes, procfs, and Automated Testing
 
@@ -97,8 +97,8 @@ TEST_CASE("process::resume already terminated", "[process]") {
 - Use `info.size` instead of `sizeof(v)` in `sdb::registers::write` in *sdb/src/registers.cpp*:
 
 ```diff
-- std::copy(val_bytes, val_bytes + info.size, bytes + info.offset);
-+ std::copy(val_bytes, val_bytes + sizeof(v), bytes + info.offset);
+- std::copy(val_bytes, val_bytes + sizeof(v), bytes + info.offset);
++ std::copy(val_bytes, val_bytes + info.size, bytes + info.offset);
 ```
 
 ## Chapter 6 - Testing Registers with x64 Assembly
@@ -329,7 +329,7 @@ sdb::process::read_memory_without_traps(
 +   reason.trap_reason = trap_type::unknown;
     if (reason.info == SIGTRAP) {
 ```
-- Initialize `message` in `get_sigtrap_info` in *sdb/src/process.cpp* to `" "`:
+- Initialize `message` in `get_sigtrap_info` in *sdb/tools/sdb.cpp* to `" "`:
 ```diff
 - std::string message;
 + std::string message = " ";
