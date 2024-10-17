@@ -12,7 +12,7 @@
 sdb::elf::elf(const std::filesystem::path& path) {
 	path_ = path;
 
-	if ((fd_ = open(path.c_str(), O_LARGEFILE, O_RDONLY)) < 0) {
+	if ((fd_ = open(path.c_str(), O_RDONLY)) < 0) {
 		error::send_errno("Could not open ELF file");
 	}
 
