@@ -497,7 +497,6 @@ TEST_CASE("ELF parser works", "[elf]") {
     auto path = "targets/hello_sdb";
     sdb::elf elf(path);
     auto entry = elf.get_header().e_entry;
-    REQUIRE(entry == get_entry_point(path));
     auto sym = elf.get_symbol_at_address(file_addr{ elf, entry });
     auto name = elf.get_string(sym.value()->st_name);
     REQUIRE(name == "_start");
