@@ -2,11 +2,13 @@
 
 If you purchased the first Early Access version of Building a Debugger and you want to go straight into the chapters that weren't included in that version, this guide shows you all the code modifications that you'll need to make. If you notice something that is not in this guide, please [file an issue](https://github.com/TartanLlama/sdb/issues).
 
-## Chapter 3 - Attaching to a Process
+## Early Access Version 2024-08-02 to Early Access Version 2024-10-07
+
+### Chapter 3 - Attaching to a Process
 
 - Add `[[noreturn]]` to `sdb::error::send` and `send_errno` in *sdb/include/libsdb/error.hpp*
 
-## Chapter 4 - Pipes, procfs, and Automated Testing
+### Chapter 4 - Pipes, procfs, and Automated Testing
 
 - Use `-1` as a null indicator in `sdb::pipe::close_read` and `close_write` in *sdb/src/pipe.cpp*:
 
@@ -55,7 +57,7 @@ TEST_CASE("process::resume already terminated", "[process]") {
 }
 ```
 
-## Chapter 5 - Registers
+### Chapter 5 - Registers
 
 - Correct the superregister for `dil` in *sdb/include/libsdb/detail/registers.inc*:
 
@@ -101,7 +103,7 @@ TEST_CASE("process::resume already terminated", "[process]") {
 + std::copy(val_bytes, val_bytes + info.size, bytes + info.offset);
 ```
 
-## Chapter 6 - Testing Registers with x64 Assembly
+### Chapter 6 - Testing Registers with x64 Assembly
 
 - In `sdb::process::launch` in *sdb/src/process.cpp*, do not call `close(STDOUT_FILENO)`, as this is already handled by `dup2`:
 ```diff
@@ -162,7 +164,7 @@ namespace sdb {
 + leaq     hex_format(%rip), %rdi
 ```
 
-## Chapter 7 - Software Breakpoints
+### Chapter 7 - Software Breakpoints
 
 - Add `sdb::` to calls to `to_integral` in *sdb/tools/sdb.cpp*
 - Use parentheses instead of braces in `get_load_address` in *sdb/test/tests.cpp*, and throw an exception at the end of the function: 
@@ -225,7 +227,7 @@ namespace {
 -    auto offset = get_entry_point("targets/hello_sdb");
 +    auto offset = get_entry_point_offset("targets/hello_sdb");
 ```
-## Chapter 8 - Memory and Disassembly
+### Chapter 8 - Memory and Disassembly
 
 - Put `span` in *sdb/include/libsdb/types.hpp* in the `sdb` namespace
 - New definition of `sdb::process::read_memory` in *sdb/src/process.cpp* that can handle partial reads:
@@ -275,7 +277,7 @@ sdb::process::read_memory_without_traps(
 }
 ```
 
-## Chapter 9 - Hardware Breakpoints and Watchpoints
+### Chapter 9 - Hardware Breakpoints and Watchpoints
 
 - Make `sdb::process::read_memory_without_traps` in *sdb/src/process.cpp* ignore hardware breakpoints:
 ```diff
@@ -307,7 +309,7 @@ sdb::process::read_memory_without_traps(
     auto reason = proc->wait_on_signal();
 ```
 
-## Chapter 10 - Signals and Syscalls
+### Chapter 10 - Signals and Syscalls
 
 - Add `#include <csignal>` to *sdb/tools/sdb.cpp*
 - Change the type of `syscall_information::id` in *sdb/include/libsdb/process.hpp*:
@@ -350,3 +352,45 @@ sdb::process::read_memory_without_traps(
 - return fmt::format("(breakpoint {})", site.id());
 + return fmt::format(" (breakpoint {})", site.id());
 ```
+
+## Early Access Version 2024-10-07 to Published Version
+
+### Chapter 1 - Project Setup
+
+- Replace `readline` with `libedit` in *sdb/CMakeLists.txt*:
+```diff
+-pkg_check_modules(readline REQUIRED IMPORTED_TARGET readline)
++pkg_check_modules(libedit REQUIRED IMPORTED_TARGET libedit)
+```
+- Replace `readline` with `libedit` in *sdb/tools/CMakeLists.txt*:
+```diff
+-target_link_libraries(sdb PRIVATE sdb::libsdb PkgConfig::readline fmt::fmt)
++target_link_libraries(sdb PRIVATE sdb::libsdb PkgConfig::libedit fmt::fmt)
+```
+- Replace `readline` with `libedit` in *sdb/vcpkg.json*:
+```diff
+-  "dependencies": [ "readline", "catch2" ]
++  "dependencies": [ "libedit", "catch2" ]
+```
+
+### Chapter 3 - Attaching to a Process
+
+- Replace `readline` with `libedit` in *sdb/tools/sdb.cpp*:
+```diff
+-#include <readline/readline.h>
+-#include <readline/history.h>
++#include <editline/readline.h>
+```
+
+### Chapter 11 - Object Files
+
+- Remove `O_LARGEFILE` from the `open` call in `sdb::elf::elf` in *sdb/src/elf.cpp*:
+```diff
+-	if ((fd_ = open(path.c_str(), O_LARGEFILE, O_RDONLY)) < 0) {
++	if ((fd_ = open(path.c_str(), O_RDONLY)) < 0) {
+```
+- Remove test of `entry` against `get_entry_point` in *sdb/test/tests.cpp*:
+```diff
+-    REQUIRE(entry == get_entry_point(path));
+```
+
