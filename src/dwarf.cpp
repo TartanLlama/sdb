@@ -1797,7 +1797,8 @@ sdb::location_list::eval(
         }
         else {
             auto length = cur.u16();
-            if (pc.addr() >= first and pc.addr() < second) {
+            if (pc.addr() >= base_address + first and 
+                pc.addr() < base_address + second) {
                 dwarf_expression expr(*parent_, { cur.position(), cur.position() + length }, in_frame_info_);
                 return expr.eval(proc, regs);
             }
