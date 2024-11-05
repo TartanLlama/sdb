@@ -394,3 +394,12 @@ sdb::process::read_memory_without_traps(
 -    REQUIRE(entry == get_entry_point(path));
 ```
 
+### Chapter 19 - DWARF Expressions
+
+- Take the base address into account for DWARF location lists in `sdb::location_list::eval` in *sdb/src/dwarf.cpp*:
+```diff
+-            if (pc.addr() >= first and pc.addr() < second) {
++            if (pc.addr() >= base_address + first and
++                pc.addr() < base_address + second) {
+```
+
