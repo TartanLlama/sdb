@@ -95,7 +95,7 @@ namespace {
                     pos, pos + subtype.byte_size() };
                 auto data = sdb::typed_data{ member_data, subtype }
                 .fixup_bitfield(proc, child);
-                auto member_str = data.visualize(proc, depth);
+                auto member_str = data.visualize(proc, depth + 1);
                 auto name = child.name().value_or("<unnamed>");
                 ret += fmt::format("{}{}: {}\n", indent, name, member_str);
             }
