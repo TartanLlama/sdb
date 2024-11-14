@@ -403,3 +403,10 @@ sdb::process::read_memory_without_traps(
 +                pc.addr() < base_address + second) {
 ```
 
+### Chapter 20 - Variables and Types
+
+- Increase the visualization depth in the recursive call to `sdb::typed_data::visualize` in `visualize_class_type` in *sdb/src/type.cpp*:
+```diff
+-                auto member_str = data.visualize(proc, depth);
++                auto member_str = data.visualize(proc, depth + 1);
+```
