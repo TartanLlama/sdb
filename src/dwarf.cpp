@@ -1404,13 +1404,13 @@ namespace {
                 unwound_regs.write(reg_info, { addr }, false);
             }
             else if (auto expr = std::get_if<expr_rule>(&rule)) {
-                auto res = expr->expr.eval(proc, old_regs);
+                auto res = expr->expr.eval(proc, old_regs, true);
                 auto addr = dwexp_addr_result(res);
                 auto value = proc.read_memory_as<std::uint64_t>(addr);
                 unwound_regs.write(reg_info, { value }, false);
             }
             else if (auto val_expr = std::get_if<val_expr_rule>(&rule)) {
-                auto res = val_expr->expr.eval(proc, old_regs);
+                auto res = val_expr->expr.eval(proc, old_regs, true);
                 auto addr = dwexp_addr_result(res);
                 unwound_regs.write(reg_info, { addr.addr() }, false);
             }
