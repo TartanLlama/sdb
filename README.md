@@ -2,6 +2,8 @@
 
 This repository contains the source code for the book [Building a Debugger](https://nostarch.com/building-a-debugger).
 
+See [Errata](errata.md) for errata.
+
 If you ordered the Early Access version of the book and want to update your code to the current version, see the [Early Access Upgrade Guide](early_access_upgrade.md).
 
 - Chapter 1: [Project Setup](https://github.com/TartanLlama/sdb/tree/chapter-1)
