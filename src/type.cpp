@@ -511,7 +511,7 @@ std::size_t sdb::type::alignment() const {
         return byte_size();
     }
     if (is_class_type()) {
-        std::size_t max_alignment = 0;
+        std::size_t max_alignment = 1;
         for (auto child : get_die().children()) {
             if (child.abbrev_entry()->tag == DW_TAG_member and
                 child.contains(DW_AT_data_member_location) or
@@ -527,7 +527,8 @@ std::size_t sdb::type::alignment() const {
     if (get_die().abbrev_entry()->tag == DW_TAG_array_type) {
         return get_die()[DW_AT_type].as_type().alignment();
     }
-    return byte_size();
+    auto size = byte_size();
+    return size != 0 ? size : 1;
 }
 
 bool sdb::type::has_unaligned_fields() const {
