@@ -644,13 +644,13 @@ bool sdb::type::is_non_trivial_for_calls() const {
             if (child.abbrev_entry()->tag == DW_TAG_subprogram) {
                 if (is_copy_or_move_constructor(*this, child)) {
                     if (!child.contains(DW_AT_defaulted) or
-                        !child[DW_AT_defaulted].as_int() != DW_DEFAULTED_in_class) {
+                        child[DW_AT_defaulted].as_int() != DW_DEFAULTED_in_class) {
                         return true;
                     }
                 }
                 else if (is_destructor(child)) {
                     if (!child.contains(DW_AT_defaulted) or
-                        !child[DW_AT_defaulted].as_int() != DW_DEFAULTED_in_class) {
+                        child[DW_AT_defaulted].as_int() != DW_DEFAULTED_in_class) {
                         return true;
                     }
                 }
