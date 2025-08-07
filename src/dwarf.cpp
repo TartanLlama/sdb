@@ -1937,7 +1937,7 @@ std::optional<sdb::die> sdb::dwarf::find_local_variable(
 
 std::vector<sdb::type> sdb::die::parameter_types() const {
     std::vector<type> ret;
-    if (!abbrev_->tag == DW_TAG_subprogram) return ret;
+    if (abbrev_->tag != DW_TAG_subprogram) return ret;
     for (auto& c : children()) {
         if (c.abbrev_entry()->tag == DW_TAG_formal_parameter) {
             ret.push_back(c[DW_AT_type].as_type());
