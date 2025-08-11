@@ -864,7 +864,7 @@ namespace {
 			for (auto& var : scope.children()) {
 				std::string name(var.name().value_or(""));
 				auto tag = var.abbrev_entry()->tag;
-				if (tag == DW_TAG_variable or tag == DW_TAG_formal_parameter and
+				if ((tag == DW_TAG_variable or tag == DW_TAG_formal_parameter) and
 					!name.empty() and !seen.count(name)) {
 					auto loc = var[DW_AT_location].as_evaluated_location(
 						target.get_process(), target.get_stack().current_frame().regs, false);
