@@ -57,6 +57,16 @@ There is an inverted boolean in the text. The code is correct, however.
 
 ## Chapter 9: Hardware Breakpoints and Watchpoints
 
+### p194 - Wrong binary representation of Enable flag in Debug Control Register
+
+The example says `we want to set a read/write stop point of size 8 on debug register 2`, but
+the reported `Enable flag` shows the wrong bits set.
+
+```diff
+- Enable flag:    00000000 00000000 00000000 01000000
++ Enable flag:    00000000 00000000 00000000 00010000
+```
+
 ### p205 - Off-by-one error in alignment text
 
 The text incorrectly describes aligning addresses. The code is correct, however.
